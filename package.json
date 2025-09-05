@@ -1,0 +1,35 @@
+{
+  "name": "kakao-slack-profile-bot",
+  "version": "1.0.0",
+  "description": "Daily KakaoTalk Plus Friend profile image sender to Slack",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@slack/web-api": "^6.12.0",
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.1",
+    "node-cron": "^3.0.3",
+    "puppeteer": "^24.17.1",
+    "winston": "^3.11.0",
+    "tesseract.js": "^5.0.4",
+    "sharp": "^0.33.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.1",
+    "node-windows": "^1.0.0-beta.8"
+  },
+  "keywords": [
+    "kakao",
+    "slack",
+    "automation",
+    "profile",
+    "scraping"
+  ],
+  "author": "",
+  "license": "MIT"
+}
