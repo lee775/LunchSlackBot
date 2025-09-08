@@ -6,7 +6,7 @@ class SlackClient {
     this.client = new WebClient(botToken);
   }
 
-  async uploadAndPostImage(channelId, imageBuffer, filename = 'kakao_profile.jpg', message = '') {
+  async uploadAndPostImage(channelId, imageBuffer, filename = 'kakao_profile.jpg', message = '', referenceUrl = '') {
     try {
       // 새로운 files.uploadV2 API 사용
       const uploadResult = await this.client.files.uploadV2({
@@ -14,7 +14,7 @@ class SlackClient {
         file: imageBuffer,
         filename: filename,
         title: '카카오톡 플러스친구 프로필 이미지',
-        initial_comment: message || `📸 매일 업데이트되는 카카오톡 플러스친구 프로필 이미지입니다. (${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })})`
+        initial_comment: this.buildMessageWithReference(message || `📸 매일 업데이트되는 카카오톡 플러스친구 프로필 이미지입니다. (${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })})`, referenceUrl)
       });
 
       if (uploadResult.ok) {
@@ -33,6 +33,14 @@ class SlackClient {
       logger.error('Error uploading image to Slack:', error);
       throw error;
     }
+  }
+
+  buildMessageWithReference(message, referenceUrl) {
+    if (!referenceUrl) {
+      return message;
+    }
+    
+    return `${message}\n\n🔗 *참조 사이트:* <${referenceUrl}|카카오톡 플러스친구 페이지>`;
   }
 
   async sendMessage(channelId, text) {

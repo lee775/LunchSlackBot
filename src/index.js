@@ -96,7 +96,8 @@ class KakaoSlackBot {
         config.slack.lunchChannelId,
         profileData.buffer,
         `lunch_menu_${new Date().toISOString().split('T')[0]}.${profileData.method === 'screenshot' ? 'png' : 'jpg'}`,
-        message
+        message,
+        config.kakao.plusFriendUrl
       );
 
       if (uploadResult.success) {
