@@ -62,3 +62,8 @@ debug-*.js
 *.traineddata
 .vs/
 .claude/
+
+# Deployment files
+*.tar.gz
+*.tar
+*.zip
