@@ -65,15 +65,23 @@ class KakaoSlackBot {
     try {
       logger.info('Starting ngrok tunnel for public URL...');
 
-      // ngrok authtoken이 환경 변수에 있으면 사용
+      // ngrok authtoken과 domain 설정
       const authtoken = process.env.NGROK_AUTHTOKEN;
+      const domain = process.env.NGROK_DOMAIN;
 
-      // ngrok 터널 시작
-      const listener = await ngrok.forward({
+      // ngrok 터널 시작 옵션
+      const forwardOptions = {
         addr: config.server.port,
-        authtoken: authtoken || undefined, // authtoken이 없어도 작동 (무료)
+        authtoken: authtoken || undefined,
         authtoken_from_env: true
-      });
+      };
+
+      // Static domain이 설정되어 있으면 사용
+      if (domain) {
+        forwardOptions.domain = domain;
+      }
+
+      const listener = await ngrok.forward(forwardOptions);
 
       const publicUrl = listener.url();
       const slackInteractionUrl = `${publicUrl}/slack/interactions`;
@@ -82,7 +90,11 @@ class KakaoSlackBot {
 
       logger.info('');
       logger.info('================================================');
-      logger.info('🌐 PUBLIC URL CREATED! (ngrok)');
+      if (domain) {
+        logger.info('🌐 FIXED URL CREATED! (ngrok static domain)');
+      } else {
+        logger.info('🌐 PUBLIC URL CREATED! (ngrok)');
+      }
       logger.info('================================================');
       logger.info(`Public URL: ${publicUrl}`);
       logger.info(`Slack Interactive URL: ${slackInteractionUrl}`);
@@ -90,7 +102,12 @@ class KakaoSlackBot {
       logger.info('✅ NO PASSWORD REQUIRED!');
       logger.info('   ngrok은 비밀번호 없이 바로 사용 가능합니다!');
       logger.info('');
-      logger.info('⚠️  SLACK APP 설정:');
+      if (domain) {
+        logger.info('🎉 FIXED URL - 매번 같은 URL입니다!');
+        logger.info('   Slack App에 한 번만 설정하면 됩니다!');
+        logger.info('');
+      }
+      logger.info('⚠️  SLACK APP 설정 (최초 1회만):');
       logger.info('');
       logger.info('1. Slack App 설정 페이지 접속:');
       logger.info('   https://api.slack.com/apps');
@@ -104,11 +121,11 @@ class KakaoSlackBot {
       logger.info('');
       logger.info('5. Save Changes 클릭');
       logger.info('');
-      if (!authtoken) {
-        logger.info('💡 TIP: ngrok authtoken을 설정하면 더 안정적입니다');
-        logger.info('   1. https://dashboard.ngrok.com/signup 에서 무료 가입');
-        logger.info('   2. authtoken 복사');
-        logger.info('   3. .env 파일에 NGROK_AUTHTOKEN=your_token 추가');
+      if (!domain) {
+        logger.info('💡 TIP: ngrok static domain을 설정하면 URL이 고정됩니다!');
+        logger.info('   1. https://dashboard.ngrok.com/cloud-edge/domains 접속');
+        logger.info('   2. Create Domain 클릭 (무료)');
+        logger.info('   3. .env 파일에 NGROK_DOMAIN=your-domain 추가');
         logger.info('');
       }
       logger.info('================================================');
