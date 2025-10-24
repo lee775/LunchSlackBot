@@ -136,7 +136,7 @@ class SlackInteractionServer {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `🎲 *<@${userId}>님이 대체 메뉴를 선택했습니다!*\n\n🍽️ **${randomMenu}**\n\n맛있는 식사 되세요! 😋`
+              text: `🎲 *오늘의 대체 메뉴가 선택되었습니다!*\n\n🍽️ **${randomMenu}**\n\n맛있는 식사 되세요! 😋`
             }
           },
           {
@@ -185,7 +185,7 @@ class SlackInteractionServer {
               type: 'section',
               text: {
                 type: 'mrkdwn',
-                text: `✅ *메뉴 변경 카운트가 초기화되었습니다!*\n\n<@${userId}>님이 오늘의 메뉴 변경 사용 기록을 초기화했습니다.\n다시 메뉴 변경이 가능합니다! 🎲`
+                text: `✅ *메뉴 변경 카운트가 초기화되었습니다!*\n\n오늘의 메뉴 변경 사용 기록이 초기화되었습니다.\n다시 메뉴 변경이 가능합니다! 🎲`
               }
             },
             {
