@@ -146,6 +146,53 @@ class SlackClient {
     }
   }
 
+  async sendMessageWithButton(channelId, text, buttonText, buttonActionId, buttonStyle = 'primary') {
+    try {
+      const blocks = [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: text
+          }
+        },
+        {
+          type: 'actions',
+          block_id: 'admin_actions',
+          elements: [
+            {
+              type: 'button',
+              text: {
+                type: 'plain_text',
+                text: buttonText,
+                emoji: true
+              },
+              style: buttonStyle,
+              action_id: buttonActionId
+            }
+          ]
+        }
+      ];
+
+      const result = await this.client.chat.postMessage({
+        channel: channelId,
+        text: text,
+        blocks: blocks
+      });
+
+      if (result.ok) {
+        logger.info(`Message with button sent successfully to Slack channel: ${channelId}`);
+        return result;
+      } else {
+        throw new Error(`Slack message failed: ${result.error}`);
+      }
+
+    } catch (error) {
+      logger.error('Error sending message with button to Slack:', error);
+      throw error;
+    }
+  }
+
   async testConnection() {
     try {
       const result = await this.client.auth.test();

@@ -77,6 +77,11 @@ class SlackInteractionServer {
         if (action.action_id === 'change_lunch_menu') {
           await this.handleChangeMenuAction(user, response_url, channel);
         }
+
+        // Handle "reset usage" button click (admin only)
+        if (action.action_id === 'reset_menu_usage') {
+          await this.handleResetUsageAction(user, response_url, channel);
+        }
       }
     } catch (error) {
       logger.error('Error processing interaction:', error);
@@ -156,6 +161,73 @@ class SlackInteractionServer {
       // Send error message
       await this.sendEphemeralResponse(responseUrl, {
         text: '❌ 메뉴 변경 중 오류가 발생했습니다. 다시 시도해주세요.',
+        response_type: 'ephemeral'
+      });
+    }
+  }
+
+  async handleResetUsageAction(user, responseUrl, channel) {
+    try {
+      const userId = user.id;
+      const userName = user.name || user.id;
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+      // Clear today's usage
+      const wasCleared = this.usageTracker.clearToday(today);
+
+      // Send confirmation message
+      const axios = require('axios');
+      if (wasCleared) {
+        await axios.post(responseUrl, {
+          text: '✅ *메뉴 변경 카운트가 초기화되었습니다!*',
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `✅ *메뉴 변경 카운트가 초기화되었습니다!*\n\n<@${userId}>님이 오늘의 메뉴 변경 사용 기록을 초기화했습니다.\n다시 메뉴 변경이 가능합니다! 🎲`
+              }
+            },
+            {
+              type: 'context',
+              elements: [
+                {
+                  type: 'mrkdwn',
+                  text: `💡 ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} | 초기화 완료`
+                }
+              ]
+            }
+          ],
+          replace_original: false,
+          response_type: 'in_channel'
+        });
+
+        logger.info(`Usage reset by admin user ${userId} (${userName}) for date ${today}`);
+      } else {
+        await axios.post(responseUrl, {
+          text: 'ℹ️ 오늘 초기화할 데이터가 없습니다.',
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: 'ℹ️ *초기화할 데이터가 없습니다.*\n\n오늘은 아직 메뉴 변경이 사용되지 않았습니다.'
+              }
+            }
+          ],
+          replace_original: false,
+          response_type: 'ephemeral'
+        });
+
+        logger.info(`User ${userId} (${userName}) tried to reset but no data for ${today}`);
+      }
+
+    } catch (error) {
+      logger.error('Error handling reset usage action:', error);
+
+      // Send error message
+      await this.sendEphemeralResponse(responseUrl, {
+        text: '❌ 초기화 중 오류가 발생했습니다. 다시 시도해주세요.',
         response_type: 'ephemeral'
       });
     }

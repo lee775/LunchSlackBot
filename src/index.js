@@ -156,8 +156,14 @@ class KakaoSlackBot {
                     `🔗 모니터링 대상: ${config.kakao.plusFriendUrl}\n\n` +
                     `✨ 맛있는 점심시간을 기대해주세요!`;
 
-      await this.slackClient.sendMessage(config.slack.startupChannelId, message);
-      logger.info('Startup notification sent to Slack');
+      await this.slackClient.sendMessageWithButton(
+        config.slack.startupChannelId,
+        message,
+        '🔄 메뉴 변경 카운트 초기화',
+        'reset_menu_usage',
+        'danger'
+      );
+      logger.info('Startup notification with reset button sent to Slack');
 
     } catch (error) {
       logger.error('Failed to send startup notification:', error);

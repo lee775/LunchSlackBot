@@ -125,6 +125,20 @@ class UsageTracker {
   }
 
   /**
+   * Clear today's usage data
+   * @param {string} date - Date in YYYY-MM-DD format
+   */
+  clearToday(date) {
+    if (this.usageData[date]) {
+      delete this.usageData[date];
+      this.saveData();
+      logger.info(`Cleared usage data for ${date}`);
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * Clear all usage data
    */
   clearAll() {
