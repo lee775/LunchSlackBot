@@ -4,6 +4,9 @@ const KakaoScraper = require('./services/kakaoScraper');
 const SlackClient = require('./services/slackClient');
 const TaskScheduler = require('./scheduler');
 const OCRService = require('./services/ocrService');
+const UsageTracker = require('./services/usageTracker');
+const SlackInteractionServer = require('./server');
+const ngrok = require('@ngrok/ngrok');
 
 class KakaoSlackBot {
   constructor() {
@@ -11,6 +14,9 @@ class KakaoSlackBot {
     this.slackClient = new SlackClient(config.slack.botToken);
     this.scheduler = new TaskScheduler();
     this.ocrService = new OCRService();
+    this.usageTracker = new UsageTracker();
+    this.interactionServer = new SlackInteractionServer(this.slackClient, this.usageTracker);
+    this.tunnel = null;
     this.isRunning = false;
   }
 
@@ -25,6 +31,13 @@ class KakaoSlackBot {
       // 채널 정보 확인 건너뛰기 (권한 문제 방지)
       logger.info(`Using Slack channel: ${config.slack.channelId}`);
 
+      // 인터랙티브 서버 시작
+      await this.interactionServer.start();
+      logger.info('Slack interaction server started');
+
+      // Localtunnel 시작 (공개 URL 생성)
+      await this.startTunnel();
+
       // 스케줄 작업 등록
       this.scheduler.addTask(
         'daily-profile-sync',
@@ -38,13 +51,83 @@ class KakaoSlackBot {
 
       logger.info('Bot initialized successfully');
       this.isRunning = true;
-      
+
       // 봇 시작 알림 메시지 전송
       await this.sendStartupNotification();
-      
+
     } catch (error) {
       logger.error('Failed to initialize bot:', error);
       throw error;
+    }
+  }
+
+  async startTunnel() {
+    try {
+      logger.info('Starting ngrok tunnel for public URL...');
+
+      // ngrok authtoken이 환경 변수에 있으면 사용
+      const authtoken = process.env.NGROK_AUTHTOKEN;
+
+      // ngrok 터널 시작
+      const listener = await ngrok.forward({
+        addr: config.server.port,
+        authtoken: authtoken || undefined, // authtoken이 없어도 작동 (무료)
+        authtoken_from_env: true
+      });
+
+      const publicUrl = listener.url();
+      const slackInteractionUrl = `${publicUrl}/slack/interactions`;
+
+      this.tunnel = listener;
+
+      logger.info('');
+      logger.info('================================================');
+      logger.info('🌐 PUBLIC URL CREATED! (ngrok)');
+      logger.info('================================================');
+      logger.info(`Public URL: ${publicUrl}`);
+      logger.info(`Slack Interactive URL: ${slackInteractionUrl}`);
+      logger.info('');
+      logger.info('✅ NO PASSWORD REQUIRED!');
+      logger.info('   ngrok은 비밀번호 없이 바로 사용 가능합니다!');
+      logger.info('');
+      logger.info('⚠️  SLACK APP 설정:');
+      logger.info('');
+      logger.info('1. Slack App 설정 페이지 접속:');
+      logger.info('   https://api.slack.com/apps');
+      logger.info('');
+      logger.info('2. Interactivity & Shortcuts 메뉴 선택');
+      logger.info('');
+      logger.info('3. Interactivity 켜기 (ON)');
+      logger.info('');
+      logger.info('4. Request URL 입력:');
+      logger.info(`   ${slackInteractionUrl}`);
+      logger.info('');
+      logger.info('5. Save Changes 클릭');
+      logger.info('');
+      if (!authtoken) {
+        logger.info('💡 TIP: ngrok authtoken을 설정하면 더 안정적입니다');
+        logger.info('   1. https://dashboard.ngrok.com/signup 에서 무료 가입');
+        logger.info('   2. authtoken 복사');
+        logger.info('   3. .env 파일에 NGROK_AUTHTOKEN=your_token 추가');
+        logger.info('');
+      }
+      logger.info('================================================');
+      logger.info('');
+
+    } catch (error) {
+      logger.error('Failed to start ngrok tunnel:', error);
+      logger.warn('봇은 정상 작동하지만, 버튼 기능은 Slack App 설정 후 사용 가능합니다.');
+
+      if (error.message && error.message.includes('authtoken')) {
+        logger.error('');
+        logger.error('❌ ngrok authtoken이 필요합니다!');
+        logger.error('');
+        logger.error('해결 방법:');
+        logger.error('1. https://dashboard.ngrok.com/signup 에서 무료 가입');
+        logger.error('2. authtoken 복사');
+        logger.error('3. .env 파일에 추가: NGROK_AUTHTOKEN=your_token_here');
+        logger.error('');
+      }
     }
   }
 
@@ -58,7 +141,7 @@ class KakaoSlackBot {
 
       await this.slackClient.sendMessage(config.slack.startupChannelId, message);
       logger.info('Startup notification sent to Slack');
-      
+
     } catch (error) {
       logger.error('Failed to send startup notification:', error);
       // 시작 알림 실패해도 봇은 계속 동작
@@ -90,9 +173,9 @@ class KakaoSlackBot {
                     `🏪 윤쉐프 코오롱 점심메뉴를 확인해주세요!\n\n` +
                     `🍚 맛있는 식사 되세요! 🥢`;
 
-      // 3. Slack에 점심메뉴 이미지 업로드 및 전송
-      logger.info('Uploading lunch menu image to Slack...');
-      const uploadResult = await this.slackClient.uploadAndPostImage(
+      // 3. Slack에 점심메뉴 이미지 업로드 및 버튼과 함께 전송
+      logger.info('Uploading lunch menu image with button to Slack...');
+      const uploadResult = await this.slackClient.uploadAndPostImageWithButton(
         config.slack.lunchChannelId,
         profileData.buffer,
         `lunch_menu_${new Date().toISOString().split('T')[0]}.${profileData.method === 'screenshot' ? 'png' : 'jpg'}`,
@@ -156,12 +239,20 @@ class KakaoSlackBot {
 
   async stop() {
     logger.info('Stopping Kakao-Slack Bot...');
-    
+
     this.scheduler.stopAllTasks();
+    await this.interactionServer.stop();
+
+    // ngrok 터널 종료
+    if (this.tunnel) {
+      await this.tunnel.close();
+      logger.info('ngrok tunnel closed');
+    }
+
     await this.kakaoScraper.close();
     await this.ocrService.close();
     this.isRunning = false;
-    
+
     logger.info('Bot stopped');
   }
 

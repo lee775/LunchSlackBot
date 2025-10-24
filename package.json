@@ -9,9 +9,12 @@
     "test": "jest"
   },
   "dependencies": {
+    "@ngrok/ngrok": "^1.0.0",
     "@slack/web-api": "^6.12.0",
     "axios": "^1.6.0",
+    "body-parser": "^1.20.2",
     "dotenv": "^16.3.1",
+    "express": "^4.18.2",
     "node-cron": "^3.0.3",
     "puppeteer": "^24.17.1",
     "winston": "^3.11.0",

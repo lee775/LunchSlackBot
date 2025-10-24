@@ -35,6 +35,80 @@ class SlackClient {
     }
   }
 
+  async uploadAndPostImageWithButton(channelId, imageBuffer, filename = 'kakao_profile.jpg', message = '', referenceUrl = '') {
+    try {
+      // 1. Upload image with message
+      const uploadResult = await this.client.files.uploadV2({
+        channel_id: channelId,
+        file: imageBuffer,
+        filename: filename,
+        title: '카카오톡 플러스친구 프로필 이미지',
+        initial_comment: this.buildMessageWithReference(message, referenceUrl)
+      });
+
+      if (!uploadResult.ok) {
+        throw new Error(`Slack upload failed: ${uploadResult.error}`);
+      }
+
+      logger.info(`Image uploaded successfully to Slack channel: ${channelId}`);
+
+      // 2. Wait 3 seconds to ensure image is fully posted
+      logger.info('Waiting 3 seconds before posting button...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // 3. Post button right below the image (as next message in channel)
+      const blocks = [
+        {
+          type: 'actions',
+          block_id: 'menu_actions',
+          elements: [
+            {
+              type: 'button',
+              text: {
+                type: 'plain_text',
+                text: '🎲 메뉴가 마음에 안 들어요',
+                emoji: true
+              },
+              style: 'primary',
+              action_id: 'change_lunch_menu'
+            }
+          ]
+        },
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: '💡 오늘 처음 누르는 사람의 선택이 전체에 공유됩니다!'
+            }
+          ]
+        }
+      ];
+
+      const messageResult = await this.client.chat.postMessage({
+        channel: channelId,
+        text: '메뉴 변경 버튼',
+        blocks: blocks
+      });
+
+      if (messageResult.ok) {
+        logger.info(`Message with button posted successfully to channel: ${channelId}`);
+        return {
+          success: true,
+          fileId: uploadResult.file?.id || uploadResult.files?.[0]?.id || 'unknown',
+          permalink: uploadResult.file?.permalink || uploadResult.files?.[0]?.permalink || 'unknown',
+          messageTs: messageResult.ts
+        };
+      } else {
+        throw new Error(`Slack message failed: ${messageResult.error}`);
+      }
+
+    } catch (error) {
+      logger.error('Error uploading image with button to Slack:', error);
+      throw error;
+    }
+  }
+
   buildMessageWithReference(message, referenceUrl) {
     if (!referenceUrl) {
       return message;

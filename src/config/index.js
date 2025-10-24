@@ -16,6 +16,30 @@ const config = {
   logging: {
     level: process.env.LOG_LEVEL || 'info',
   },
+  server: {
+    port: parseInt(process.env.SERVER_PORT || '3000', 10),
+  },
+  lunch: {
+    alternativeMenus: process.env.ALTERNATIVE_MENUS
+      ? process.env.ALTERNATIVE_MENUS.split(',').map(m => m.trim())
+      : [
+          '김치찌개',
+          '된장찌개',
+          '부대찌개',
+          '비빔밥',
+          '제육볶음',
+          '돈까스',
+          '불고기',
+          '삼겹살',
+          '치킨',
+          '피자',
+          '파스타',
+          '햄버거',
+          '초밥',
+          '라멘',
+          '쌀국수'
+        ]
+  },
 };
 
 // 필수 환경변수 검증
