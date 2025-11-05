@@ -73,9 +73,24 @@ class SlackInteractionServer {
       if (type === 'block_actions' && actions && actions.length > 0) {
         const action = actions[0];
 
+        // Handle "preview menu" button click
+        if (action.action_id === 'preview_lunch_menu') {
+          await this.handlePreviewMenuAction(user, response_url, channel);
+        }
+
         // Handle "change menu" button click
         if (action.action_id === 'change_lunch_menu') {
           await this.handleChangeMenuAction(user, response_url, channel);
+        }
+
+        // Handle "confirm menu" button click
+        if (action.action_id === 'confirm_lunch_menu') {
+          await this.handleConfirmMenuAction(user, response_url, channel);
+        }
+
+        // Handle "cancel menu" button click
+        if (action.action_id === 'cancel_lunch_menu') {
+          await this.handleCancelMenuAction(user, response_url, channel);
         }
 
         // Handle "reset usage" button click (admin only)
@@ -88,29 +103,279 @@ class SlackInteractionServer {
     }
   }
 
+  async handlePreviewMenuAction(user, responseUrl, channel) {
+    try {
+      const userId = user.id;
+      const userName = user.name || user.id;
+      const today = new Date().toISOString().split('T')[0];
+
+      // Check if anyone already used this feature today
+      const canUse = this.usageTracker.canUseToday(today);
+
+      if (!canUse) {
+        // Check if already confirmed
+        const isConfirmed = this.usageTracker.isMenuConfirmed(today);
+
+        if (isConfirmed) {
+          // Already confirmed - show rejection message
+          await this.sendEphemeralResponse(responseUrl, {
+            text: '⏰ *오늘은 이미 메뉴가 확정되었습니다!*',
+            blocks: [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: '⏰ *오늘은 이미 메뉴가 확정되었습니다!*\n\n메뉴 변경은 하루에 한 번만 가능합니다.\n내일 다시 시도해주세요! 😊'
+                }
+              }
+            ],
+            replace_original: false,
+            response_type: 'ephemeral'
+          });
+          return;
+        }
+
+        // Show existing preview to this user
+        const previewMenu = this.usageTracker.getPreviewMenu(today);
+        if (previewMenu) {
+          await this.sendEphemeralResponse(responseUrl, {
+            text: `👀 오늘의 대체 메뉴 미리보기: ${previewMenu}`,
+            blocks: [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `👀 *오늘의 대체 메뉴 미리보기*\n\n🍽️ **${previewMenu}**\n\n이 메뉴는 아직 다른 사람들에게 공개되지 않았습니다.`
+                }
+              },
+              {
+                type: 'actions',
+                block_id: 'preview_actions',
+                elements: [
+                  {
+                    type: 'button',
+                    text: {
+                      type: 'plain_text',
+                      text: '✅ 이 메뉴로 확정',
+                      emoji: true
+                    },
+                    style: 'primary',
+                    action_id: 'confirm_lunch_menu'
+                  },
+                  {
+                    type: 'button',
+                    text: {
+                      type: 'plain_text',
+                      text: '❌ 구내식당으로 먹을래요',
+                      emoji: true
+                    },
+                    style: 'danger',
+                    action_id: 'cancel_lunch_menu'
+                  }
+                ]
+              }
+            ],
+            replace_original: false,
+            response_type: 'ephemeral'
+          });
+        }
+        return;
+      }
+
+      // Record usage - this user is the first today
+      this.usageTracker.recordUsage(userId, today);
+
+      // Get random menu
+      const randomMenu = this.getRandomMenu();
+
+      // Save preview menu
+      this.usageTracker.setPreviewMenu(today, randomMenu);
+
+      // Send preview as ephemeral message (only visible to the user)
+      await this.sendEphemeralResponse(responseUrl, {
+        text: `👀 오늘의 대체 메뉴 미리보기: ${randomMenu}`,
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `👀 *오늘의 대체 메뉴 미리보기*\n\n🍽️ **${randomMenu}**\n\n이 메뉴는 당신만 볼 수 있습니다.\n마음에 들면 "확정" 버튼을, 구내식당을 먹고 싶으면 "취소" 버튼을 눌러주세요!`
+            }
+          },
+          {
+            type: 'actions',
+            block_id: 'preview_actions',
+            elements: [
+              {
+                type: 'button',
+                text: {
+                  type: 'plain_text',
+                  text: '✅ 이 메뉴로 확정',
+                  emoji: true
+                },
+                style: 'primary',
+                action_id: 'confirm_lunch_menu'
+              },
+              {
+                type: 'button',
+                text: {
+                  type: 'plain_text',
+                  text: '❌ 구내식당으로 먹을래요',
+                  emoji: true
+                },
+                style: 'danger',
+                action_id: 'cancel_lunch_menu'
+              }
+            ]
+          },
+          {
+            type: 'context',
+            elements: [
+              {
+                type: 'mrkdwn',
+                text: '💡 확정하면 모든 사람에게 공개되고, 취소하면 다른 사람이 버튼을 누를 수 있습니다.'
+              }
+            ]
+          }
+        ],
+        replace_original: false,
+        response_type: 'ephemeral'
+      });
+
+      logger.info(`Menu preview shown to user ${userId} (${userName}): ${randomMenu}`);
+
+    } catch (error) {
+      logger.error('Error handling preview menu action:', error);
+
+      await this.sendEphemeralResponse(responseUrl, {
+        text: '❌ 메뉴 미리보기 중 오류가 발생했습니다. 다시 시도해주세요.',
+        response_type: 'ephemeral'
+      });
+    }
+  }
+
+  async handleConfirmMenuAction(user, responseUrl, channel) {
+    try {
+      const userId = user.id;
+      const userName = user.name || user.id;
+      const today = new Date().toISOString().split('T')[0];
+
+      const previewMenu = this.usageTracker.getPreviewMenu(today);
+
+      if (!previewMenu) {
+        await this.sendEphemeralResponse(responseUrl, {
+          text: '❌ 확정할 메뉴가 없습니다. 먼저 미리보기를 눌러주세요!',
+          response_type: 'ephemeral'
+        });
+        return;
+      }
+
+      // Confirm the menu
+      this.usageTracker.confirmMenu(today);
+
+      // Send public message to channel
+      const axios = require('axios');
+      await axios.post(responseUrl, {
+        text: `🎲 *오늘의 대체 메뉴가 확정되었습니다!*`,
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `🎲 *오늘의 대체 메뉴가 확정되었습니다!*\n\n🍽️ **${previewMenu}**\n\n맛있는 식사 되세요! 😋`
+            }
+          },
+          {
+            type: 'context',
+            elements: [
+              {
+                type: 'mrkdwn',
+                text: `💡 ${new Date().toLocaleDateString('ko-KR')} | 메뉴 확정 완료`
+              }
+            ]
+          }
+        ],
+        replace_original: false,
+        response_type: 'in_channel'
+      });
+
+      logger.info(`Menu confirmed by user ${userId} (${userName}): ${previewMenu}`);
+
+    } catch (error) {
+      logger.error('Error handling confirm menu action:', error);
+
+      await this.sendEphemeralResponse(responseUrl, {
+        text: '❌ 메뉴 확정 중 오류가 발생했습니다. 다시 시도해주세요.',
+        response_type: 'ephemeral'
+      });
+    }
+  }
+
+  async handleCancelMenuAction(user, responseUrl, channel) {
+    try {
+      const userId = user.id;
+      const userName = user.name || user.id;
+      const today = new Date().toISOString().split('T')[0];
+
+      // Clear today's usage
+      const wasCleared = this.usageTracker.clearToday(today);
+
+      if (wasCleared) {
+        await this.sendEphemeralResponse(responseUrl, {
+          text: '✅ 취소되었습니다!',
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: '✅ *메뉴 선택이 취소되었습니다!*\n\n구내식당 메뉴를 즐기세요! 😊\n다른 사람이 메뉴를 변경할 수 있습니다.'
+              }
+            }
+          ],
+          replace_original: false,
+          response_type: 'ephemeral'
+        });
+
+        logger.info(`Menu cancelled by user ${userId} (${userName})`);
+      } else {
+        await this.sendEphemeralResponse(responseUrl, {
+          text: '❌ 취소할 메뉴가 없습니다.',
+          response_type: 'ephemeral'
+        });
+      }
+
+    } catch (error) {
+      logger.error('Error handling cancel menu action:', error);
+
+      await this.sendEphemeralResponse(responseUrl, {
+        text: '❌ 메뉴 취소 중 오류가 발생했습니다. 다시 시도해주세요.',
+        response_type: 'ephemeral'
+      });
+    }
+  }
+
   async handleChangeMenuAction(user, responseUrl, channel) {
     try {
       const userId = user.id;
       const userName = user.name || user.id;
       const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-      // Check if anyone already used this feature today
-      const canUse = this.usageTracker.canUseToday(today);
+      // Check if menu is already confirmed today
+      const isConfirmed = this.usageTracker.isMenuConfirmed(today);
 
-      if (!canUse) {
-        // Someone already used the feature today - no response
-        const usageInfo = this.usageTracker.getUsageToday(today);
-        logger.info(`User ${userId} tried to change menu but already used by ${usageInfo.userId} today`);
+      if (isConfirmed) {
+        // Menu is confirmed - locked
+        logger.info(`User ${userId} tried to change menu but already confirmed today`);
 
         // Send ephemeral message to inform the user
         await this.sendEphemeralResponse(responseUrl, {
-          text: '⏰ *오늘은 이미 메뉴가 변경되었습니다!*',
+          text: '⏰ *오늘은 이미 메뉴가 확정되었습니다!*',
           blocks: [
             {
               type: 'section',
               text: {
                 type: 'mrkdwn',
-                text: '⏰ *오늘은 이미 메뉴가 변경되었습니다!*\n\n메뉴 변경은 하루에 한 번만 가능합니다.\n내일 다시 시도해주세요! 😊'
+                text: '⏰ *오늘은 이미 메뉴가 확정되었습니다!*\n\n메뉴 확정은 하루에 한 번만 가능합니다.\n내일 다시 시도해주세요! 😊'
               }
             }
           ],
@@ -121,22 +386,26 @@ class SlackInteractionServer {
         return;
       }
 
-      // Record usage - this user is the first today
+      // Record usage and confirm immediately
       this.usageTracker.recordUsage(userId, today);
 
       // Get random menu
       const randomMenu = this.getRandomMenu();
 
-      // Send new menu as public message to channel
+      // Save and confirm menu immediately
+      this.usageTracker.setPreviewMenu(today, randomMenu);
+      this.usageTracker.confirmMenu(today);
+
+      // Send public message to channel (instant confirmation)
       const axios = require('axios');
       await axios.post(responseUrl, {
-        text: `🎲 *오늘의 대체 메뉴가 선택되었습니다!*`,
+        text: `🎲 *오늘의 대체 메뉴가 확정되었습니다!*`,
         blocks: [
           {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `🎲 *오늘의 대체 메뉴가 선택되었습니다!*\n\n🍽️ **${randomMenu}**\n\n맛있는 식사 되세요! 😋`
+              text: `🎲 *오늘의 대체 메뉴가 확정되었습니다!*\n\n🍽️ **${randomMenu}**\n\n맛있는 식사 되세요! 😋`
             }
           },
           {
@@ -144,7 +413,7 @@ class SlackInteractionServer {
             elements: [
               {
                 type: 'mrkdwn',
-                text: `💡 ${new Date().toLocaleDateString('ko-KR')} | 오늘의 메뉴 변경 완료`
+                text: `💡 ${new Date().toLocaleDateString('ko-KR')} | 메뉴 확정 완료`
               }
             ]
           }
@@ -153,7 +422,7 @@ class SlackInteractionServer {
         response_type: 'in_channel' // 채널 전체에 공개
       });
 
-      logger.info(`Menu changed by user ${userId} (${userName}): ${randomMenu}`);
+      logger.info(`Menu instantly confirmed by user ${userId} (${userName}): ${randomMenu}`);
 
     } catch (error) {
       logger.error('Error handling change menu action:', error);

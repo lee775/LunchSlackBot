@@ -88,11 +88,56 @@ class UsageTracker {
     if (!this.usageData[date]) {
       this.usageData[date] = {
         userId: userId,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        previewMenu: null,
+        confirmed: false
       };
       this.saveData();
       logger.info(`Recorded usage for user ${userId} on ${date} (first user of the day)`);
     }
+  }
+
+  /**
+   * Set the preview menu for today
+   * @param {string} date - Date in YYYY-MM-DD format
+   * @param {string} menu - Menu name
+   */
+  setPreviewMenu(date, menu) {
+    if (this.usageData[date]) {
+      this.usageData[date].previewMenu = menu;
+      this.saveData();
+      logger.info(`Set preview menu for ${date}: ${menu}`);
+    }
+  }
+
+  /**
+   * Get the preview menu for today
+   * @param {string} date - Date in YYYY-MM-DD format
+   * @returns {string|null} - Menu name or null
+   */
+  getPreviewMenu(date) {
+    return this.usageData[date]?.previewMenu || null;
+  }
+
+  /**
+   * Confirm the menu for today
+   * @param {string} date - Date in YYYY-MM-DD format
+   */
+  confirmMenu(date) {
+    if (this.usageData[date]) {
+      this.usageData[date].confirmed = true;
+      this.saveData();
+      logger.info(`Menu confirmed for ${date}`);
+    }
+  }
+
+  /**
+   * Check if menu is confirmed for today
+   * @param {string} date - Date in YYYY-MM-DD format
+   * @returns {boolean} - true if confirmed
+   */
+  isMenuConfirmed(date) {
+    return this.usageData[date]?.confirmed || false;
   }
 
   /**

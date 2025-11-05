@@ -56,7 +56,7 @@ class SlackClient {
       logger.info('Waiting 3 seconds before posting button...');
       await new Promise(resolve => setTimeout(resolve, 3000));
 
-      // 3. Post button right below the image (as next message in channel)
+      // 3. Post buttons right below the image (as next message in channel)
       const blocks = [
         {
           type: 'actions',
@@ -66,10 +66,20 @@ class SlackClient {
               type: 'button',
               text: {
                 type: 'plain_text',
-                text: '🎲 메뉴가 마음에 안 들어요',
+                text: '👀 메뉴 미리보기',
                 emoji: true
               },
               style: 'primary',
+              action_id: 'preview_lunch_menu'
+            },
+            {
+              type: 'button',
+              text: {
+                type: 'plain_text',
+                text: '🎲 메뉴가 마음에 안 들어요',
+                emoji: true
+              },
+              style: 'danger',
               action_id: 'change_lunch_menu'
             }
           ]
@@ -79,7 +89,7 @@ class SlackClient {
           elements: [
             {
               type: 'mrkdwn',
-              text: '💡 오늘 처음 누르는 사람의 선택이 전체에 공유됩니다!'
+              text: '💡 미리보기로 대체 메뉴를 확인하고, 마음에 들면 확정할 수 있어요!\n(오늘 처음 확정하는 사람의 선택이 전체에 공유됩니다)'
             }
           ]
         }
@@ -208,6 +218,33 @@ class SlackClient {
       }
     } catch (error) {
       logger.error('Slack connection test failed:', error);
+      throw error;
+    }
+  }
+
+  async sendEphemeralMessage(channelId, userId, text, blocks = null) {
+    try {
+      const message = {
+        channel: channelId,
+        user: userId,
+        text: text
+      };
+
+      if (blocks) {
+        message.blocks = blocks;
+      }
+
+      const result = await this.client.chat.postEphemeral(message);
+
+      if (result.ok) {
+        logger.info(`Ephemeral message sent to user ${userId} in channel ${channelId}`);
+        return result;
+      } else {
+        throw new Error(`Slack ephemeral message failed: ${result.error}`);
+      }
+
+    } catch (error) {
+      logger.error('Error sending ephemeral message to Slack:', error);
       throw error;
     }
   }
