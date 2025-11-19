@@ -6,7 +6,7 @@ class SlackClient {
     this.client = new WebClient(botToken);
   }
 
-  async uploadAndPostImage(channelId, imageBuffer, filename = 'kakao_profile.jpg', message = '', referenceUrl = '') {
+  async uploadAndPostImage(channelId, imageBuffer, filename = 'kakao_profile.jpg', message = '', referenceUrl = '', includeReference = true) {
     try {
       // 새로운 files.uploadV2 API 사용
       const uploadResult = await this.client.files.uploadV2({
@@ -14,7 +14,9 @@ class SlackClient {
         file: imageBuffer,
         filename: filename,
         title: '카카오톡 플러스친구 프로필 이미지',
-        initial_comment: this.buildMessageWithReference(message || `📸 매일 업데이트되는 카카오톡 플러스친구 프로필 이미지입니다. (${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })})`, referenceUrl)
+        initial_comment: includeReference
+          ? this.buildMessageWithReference(message || `📸 매일 업데이트되는 카카오톡 플러스친구 프로필 이미지입니다. (${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })})`, referenceUrl)
+          : message
       });
 
       if (uploadResult.ok) {
@@ -264,6 +266,71 @@ class SlackClient {
     } catch (error) {
       logger.error('Error getting channel info:', error);
       throw error;
+    }
+  }
+
+  async postActionButtons(channelId) {
+    try {
+      const blocks = [
+        {
+          type: 'actions',
+          block_id: 'menu_actions',
+          elements: [
+            {
+              type: 'button',
+              text: {
+                type: 'plain_text',
+                text: '👀 메뉴 미리보기',
+                emoji: true
+              },
+              style: 'primary',
+              action_id: 'preview_lunch_menu'
+            },
+            {
+              type: 'button',
+              text: {
+                type: 'plain_text',
+                text: '🎲 메뉴가 마음에 안 들어요',
+                emoji: true
+              },
+              style: 'danger',
+              action_id: 'change_lunch_menu'
+            }
+          ]
+        },
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: '💡 미리보기로 대체 메뉴를 확인하고, 마음에 들면 확정할 수 있어요!\n(오늘 처음 확정하는 사람의 선택이 전체에 공유됩니다)'
+            }
+          ]
+        }
+      ];
+
+      const result = await this.client.chat.postMessage({
+        channel: channelId,
+        text: '메뉴 변경 버튼',
+        blocks: blocks
+      });
+
+      if (result.ok) {
+        logger.info(`Action buttons posted successfully to channel: ${channelId}`);
+        return {
+          success: true,
+          messageTs: result.ts
+        };
+      } else {
+        throw new Error(`Slack message failed: ${result.error}`);
+      }
+
+    } catch (error) {
+      logger.error('Error posting action buttons to Slack:', error);
+      return {
+        success: false,
+        error: error.message
+      };
     }
   }
 }

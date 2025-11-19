@@ -24,6 +24,169 @@ class KakaoScraper {
     }
   }
 
+  async getTodayMenu(plusFriendUrl) {
+    let page;
+    try {
+      if (!this.browser) {
+        await this.initialize();
+      }
+
+      page = await this.browser.newPage();
+
+      // 페이지 설정
+      await page.setViewport({ width: 1280, height: 720 });
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
+      // 자동화 감지 방지
+      await page.evaluateOnNewDocument(() => {
+        Object.defineProperty(navigator, 'webdriver', {
+          get: () => undefined,
+        });
+        delete navigator.__proto__.webdriver;
+      });
+
+      logger.info(`Navigating to: ${plusFriendUrl}`);
+
+      // 1단계: 메인 페이지 로드
+      await page.goto(plusFriendUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 30000
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 5000)); // 대기 시간 증가
+
+      logger.info('Main page loaded, searching for "오늘의 식단" post...');
+
+      // 2단계: "오늘의 식단" 게시글 링크 찾고 클릭
+      const clicked = await page.evaluate(() => {
+        const links = Array.from(document.querySelectorAll('a.link_board'));
+        const todayMenuLink = links.find(link => {
+          const title = link.querySelector('.tit_info');
+          return title && title.textContent.includes('오늘의 식단');
+        });
+
+        if (todayMenuLink) {
+          todayMenuLink.click();
+          return true;
+        }
+        return false;
+      });
+
+      if (!clicked) {
+        throw new Error('Could not find or click "오늘의 식단" post link');
+      }
+
+      logger.info('Clicked on "오늘의 식단" post, waiting for navigation...');
+
+      // 페이지 이동 대기 (새 탭이나 팝업이 열릴 수 있음)
+      await Promise.race([
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => null),
+        new Promise(resolve => setTimeout(resolve, 5000))
+      ]);
+
+      // 현재 URL 확인
+      const currentUrl = page.url();
+      logger.info(`Current URL after click: ${currentUrl}`);
+
+      logger.info('Post page loaded, extracting menu text and images...');
+
+      // 4단계: 메뉴 텍스트와 이미지 추출
+      const menuData = await page.evaluate(() => {
+        // 텍스트 추출 (게시글 본문만 정확하게)
+        const textSelectors = [
+          '.desc_g',           // 게시글 본문
+          '.txt_desc',         // 설명 텍스트
+          '.feed_desc'         // 피드 설명
+        ];
+
+        let menuText = '';
+        for (const selector of textSelectors) {
+          const element = document.querySelector(selector);
+          if (element && element.textContent) {
+            const text = element.textContent.trim();
+            // 의미 있는 메뉴 텍스트인지 확인 (최소 5자 이상, "채널홈" 같은 불필요한 텍스트 제외)
+            if (text.length >= 5 &&
+                !text.includes('채널홈을 폰으로') &&
+                !text.includes('접속해보세요') &&
+                !text.includes('QR 코드')) {
+              menuText = text;
+              break;
+            }
+          }
+        }
+
+        // 이미지 추출 (식판 사진)
+        const images = Array.from(document.querySelectorAll('img'));
+        const validImages = images
+          .filter(img =>
+            img.src &&
+            !img.src.includes('data:image') &&
+            !img.src.includes('blank.gif') &&
+            !img.src.includes('qrcode') &&
+            !img.alt.includes('프로필') &&
+            (img.naturalWidth || img.width) > 100 &&
+            (img.naturalHeight || img.height) > 100
+          )
+          .map(img => ({
+            src: img.src,
+            alt: img.alt || '',
+            width: img.naturalWidth || img.width,
+            height: img.naturalHeight || img.height
+          }))
+          .sort((a, b) => (b.width * b.height) - (a.width * a.height));
+
+        return {
+          menuText: menuText,
+          images: validImages
+        };
+      });
+
+      logger.info(`Menu text extracted: ${menuData.menuText.substring(0, 100)}...`);
+      logger.info(`Found ${menuData.images.length} food images`);
+
+      // 5단계: 이미지 다운로드
+      const images = [];
+      for (let i = 0; i < Math.min(menuData.images.length, 3); i++) {
+        const img = menuData.images[i];
+        try {
+          logger.info(`Downloading image ${i + 1}: ${img.src} (${img.width}x${img.height})`);
+
+          const imageResponse = await page.goto(img.src);
+          if (imageResponse && imageResponse.ok()) {
+            const buffer = await imageResponse.buffer();
+            images.push({
+              buffer: buffer,
+              url: img.src,
+              width: img.width,
+              height: img.height,
+              alt: img.alt
+            });
+            logger.info(`Image ${i + 1} downloaded successfully`);
+          }
+        } catch (error) {
+          logger.warn(`Failed to download image ${i + 1}:`, error.message);
+        }
+      }
+
+      if (images.length === 0) {
+        throw new Error('No food images could be downloaded');
+      }
+
+      return {
+        menuText: menuData.menuText,
+        images: images,
+        timestamp: new Date().toISOString(),
+        postUrl: currentUrl
+      };
+
+    } catch (error) {
+      logger.error('Error getting today menu:', error);
+      throw error;
+    } finally {
+      if (page) await page.close();
+    }
+  }
+
   async getProfileImage(plusFriendUrl) {
     let page;
     try {
@@ -32,11 +195,11 @@ class KakaoScraper {
       }
 
       page = await this.browser.newPage();
-      
+
       // 페이지 설정
       await page.setViewport({ width: 1280, height: 720 });
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-      
+
       // 자동화 감지 방지
       await page.evaluateOnNewDocument(() => {
         Object.defineProperty(navigator, 'webdriver', {
@@ -44,7 +207,7 @@ class KakaoScraper {
         });
         delete navigator.__proto__.webdriver;
       });
-      
+
       logger.info(`Navigating to: ${plusFriendUrl}`);
       
       // 페이지 로드

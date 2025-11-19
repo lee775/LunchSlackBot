@@ -1,8 +1,26 @@
 {
-  "2025-11-05": {
+  "2025-11-12": {
     "userId": "U09A56J7UDP",
-    "timestamp": "2025-11-05T09:07:51.250Z",
-    "previewMenu": "전라도밥상",
+    "timestamp": "2025-11-12T04:02:07.460Z",
+    "previewMenu": "유미카츠",
+    "confirmed": true
+  },
+  "2025-11-13": {
+    "userId": "U08NU9V5XFS",
+    "timestamp": "2025-11-13T03:00:24.333Z",
+    "previewMenu": "소공동뚝배기",
+    "confirmed": false
+  },
+  "2025-11-17": {
+    "userId": "U08NU9V5XFS",
+    "timestamp": "2025-11-17T04:03:37.446Z",
+    "previewMenu": "한우마당",
+    "confirmed": false
+  },
+  "2025-11-19": {
+    "userId": "U09A56J7UDP",
+    "timestamp": "2025-11-19T03:00:52.448Z",
+    "previewMenu": "미켈고깃집",
     "confirmed": true
   }
 }

@@ -172,55 +172,92 @@ class KakaoSlackBot {
   }
 
   async syncProfileImage() {
-    logger.info('Starting profile image sync...');
-    
+    logger.info('Starting today menu sync...');
+
     try {
-      // 1. 카카오톡 플러스친구 프로필 이미지 가져오기
-      logger.info('Fetching profile image from KakaoTalk Plus Friend...');
-      const profileData = await this.kakaoScraper.getProfileImage(config.kakao.plusFriendUrl);
-      
-      if (!profileData || !profileData.buffer) {
-        throw new Error('Failed to get profile image data');
+      // 1. 카카오톡 "오늘의 식단" 게시글에서 메뉴 정보 가져오기
+      logger.info('Fetching today menu from KakaoTalk Plus Friend...');
+      const menuData = await this.kakaoScraper.getTodayMenu(config.kakao.plusFriendUrl);
+
+      if (!menuData || !menuData.images || menuData.images.length === 0) {
+        throw new Error('Failed to get menu data');
       }
 
-      logger.info(`Profile data fetched using method: ${profileData.method}`);
+      logger.info(`Menu data fetched: ${menuData.images.length} images`);
 
       // 2. 점심메뉴 메시지 준비
       const today = new Date();
       const dayOfWeek = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'][today.getDay()];
       const todayDate = today.toLocaleDateString('ko-KR');
-      
-      const message = `🍽️ *오늘의 점심메뉴입니다!*\n\n` +
+
+      // 메뉴 텍스트가 있으면 포함, 없으면 기본 메시지
+      let message = `🍽️ *오늘의 점심메뉴입니다!*\n\n` +
                     `📅 ${todayDate} (${dayOfWeek})\n` +
-                    `⏰ 점심시간: ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}\n` +
-                    `🏪 윤쉐프 코오롱 점심메뉴를 확인해주세요!\n\n` +
-                    `🍚 맛있는 식사 되세요! 🥢`;
+                    `⏰ 업데이트: ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}\n\n`;
 
-      // 3. Slack에 점심메뉴 이미지 업로드 및 버튼과 함께 전송
-      logger.info('Uploading lunch menu image with button to Slack...');
-      const uploadResult = await this.slackClient.uploadAndPostImageWithButton(
-        config.slack.lunchChannelId,
-        profileData.buffer,
-        `lunch_menu_${new Date().toISOString().split('T')[0]}.${profileData.method === 'screenshot' ? 'png' : 'jpg'}`,
-        message,
-        config.kakao.plusFriendUrl
-      );
-
-      if (uploadResult.success) {
-        logger.info(`Profile sync completed successfully. File ID: ${uploadResult.fileId}`);
-        return {
-          success: true,
-          timestamp: new Date().toISOString(),
-          fileId: uploadResult.fileId,
-          permalink: uploadResult.permalink
-        };
-      } else {
-        throw new Error('Failed to upload image to Slack');
+      if (menuData.menuText && menuData.menuText.length > 0) {
+        message += `📋 *메뉴:*\n${menuData.menuText}\n\n`;
       }
 
+      message += `🍚 맛있는 식사 되세요! 🥢`;
+
+      // 3. Slack에 점심메뉴 이미지들 업로드 (메뉴판 먼저, 식판 나중)
+      logger.info('Uploading lunch menu images to Slack...');
+
+      // 이미지 순서 재정렬: 두 번째(메뉴판)를 먼저, 첫 번째(식판)를 나중에
+      const reorderedImages = menuData.images.length >= 2
+        ? [menuData.images[1], menuData.images[0], ...menuData.images.slice(2)]
+        : menuData.images;
+
+      logger.info(`Uploading ${reorderedImages.length} images in order: menu first, food tray second`);
+
+      // 모든 이미지를 버튼 없이 먼저 업로드
+      for (let i = 0; i < reorderedImages.length; i++) {
+        try {
+          if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000)); // 1초 대기
+          }
+
+          const imageLabel = i === 0 ? '📋 메뉴판' : i === 1 ? '🍽️ 식판' : `📸 추가 사진 ${i + 1}`;
+
+          await this.slackClient.uploadAndPostImage(
+            config.slack.lunchChannelId,
+            reorderedImages[i].buffer,
+            `lunch_menu_${new Date().toISOString().split('T')[0]}_${i + 1}.jpg`,
+            i === 0 ? message : imageLabel,
+            menuData.postUrl || config.kakao.plusFriendUrl,
+            i === 0  // 첫 번째 이미지에만 참조 URL 포함
+          );
+
+          logger.info(`Image ${i + 1} (${imageLabel}) uploaded successfully`);
+        } catch (error) {
+          logger.warn(`Failed to upload image ${i + 1}:`, error.message);
+        }
+      }
+
+      // 모든 이미지 업로드 후 버튼 전송
+      await new Promise(resolve => setTimeout(resolve, 2000)); // 2초 대기
+
+      logger.info('Posting action buttons...');
+      const buttonResult = await this.slackClient.postActionButtons(
+        config.slack.lunchChannelId
+      );
+
+      if (!buttonResult.success) {
+        logger.warn('Failed to post action buttons, but images were uploaded successfully');
+      }
+
+      logger.info('Menu sync completed successfully');
+      return {
+        success: true,
+        timestamp: new Date().toISOString(),
+        imageCount: menuData.images.length,
+        buttonsPosted: buttonResult.success
+      };
+
     } catch (error) {
-      logger.error('Profile sync failed:', error);
-      
+      logger.error('Menu sync failed:', error);
+
       // 에러 알림을 Slack으로 전송
       try {
         await this.slackClient.sendMessage(
@@ -230,7 +267,7 @@ class KakaoSlackBot {
       } catch (slackError) {
         logger.error('Failed to send error notification to Slack:', slackError);
       }
-      
+
       throw error;
     }
   }
