@@ -103,20 +103,41 @@ class UsageTracker {
    * @param {string} menu - Menu name
    */
   setPreviewMenu(date, menu) {
-    if (this.usageData[date]) {
+    if (!this.usageData[date]) {
+      this.usageData[date] = {
+        userId: null,
+        timestamp: new Date().toISOString(),
+        previewMenu: menu,
+        confirmed: false
+      };
+    } else {
       this.usageData[date].previewMenu = menu;
-      this.saveData();
-      logger.info(`Set preview menu for ${date}: ${menu}`);
     }
+    this.saveData();
+    logger.info(`Set preview menu for ${date}: ${menu}`);
   }
 
   /**
-   * Get the preview menu for today
+   * Get the preview menu for today (returns existing or generates new one)
    * @param {string} date - Date in YYYY-MM-DD format
+   * @param {function} menuGenerator - Optional function to generate menu if not exists
    * @returns {string|null} - Menu name or null
    */
-  getPreviewMenu(date) {
-    return this.usageData[date]?.previewMenu || null;
+  getPreviewMenu(date, menuGenerator = null) {
+    // If preview menu already exists, return it
+    if (this.usageData[date]?.previewMenu) {
+      return this.usageData[date].previewMenu;
+    }
+
+    // If menu generator provided and no menu exists, generate and save
+    if (menuGenerator && typeof menuGenerator === 'function') {
+      const newMenu = menuGenerator();
+      this.setPreviewMenu(date, newMenu);
+      logger.info(`Generated new preview menu for ${date}: ${newMenu}`);
+      return newMenu;
+    }
+
+    return null;
   }
 
   /**
@@ -170,14 +191,21 @@ class UsageTracker {
   }
 
   /**
-   * Clear today's usage data
+   * Clear today's usage data (keeps preview menu)
    * @param {string} date - Date in YYYY-MM-DD format
    */
   clearToday(date) {
     if (this.usageData[date]) {
-      delete this.usageData[date];
+      // Keep preview menu, only reset confirmation status
+      const previewMenu = this.usageData[date].previewMenu;
+      this.usageData[date] = {
+        userId: null,
+        timestamp: new Date().toISOString(),
+        previewMenu: previewMenu,
+        confirmed: false
+      };
       this.saveData();
-      logger.info(`Cleared usage data for ${date}`);
+      logger.info(`Cleared usage data for ${date}, kept preview menu: ${previewMenu}`);
       return true;
     }
     return false;
