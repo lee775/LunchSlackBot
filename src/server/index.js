@@ -453,8 +453,14 @@ class SlackInteractionServer {
 
   getRandomMenu() {
     const menus = config.lunch.alternativeMenus;
-    const randomIndex = Math.floor(Math.random() * menus.length);
-    return menus[randomIndex];
+    const today = new Date().getDay(); // 0=일요일, 1=월요일, ..., 6=토요일
+    const excludedMenus = config.lunch.excludedMenusByDay?.[today] || [];
+
+    // 오늘 제외할 메뉴를 필터링
+    const availableMenus = menus.filter(menu => !excludedMenus.includes(menu));
+
+    const randomIndex = Math.floor(Math.random() * availableMenus.length);
+    return availableMenus[randomIndex];
   }
 
   start() {
