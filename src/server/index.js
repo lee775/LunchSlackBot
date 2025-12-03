@@ -3,12 +3,14 @@ const bodyParser = require('body-parser');
 const crypto = require('crypto');
 const logger = require('../utils/logger');
 const config = require('../config');
+const WeatherService = require('../services/weatherService');
 
 class SlackInteractionServer {
   constructor(slackClient, usageTracker) {
     this.app = express();
     this.slackClient = slackClient;
     this.usageTracker = usageTracker;
+    this.weatherService = new WeatherService();
     this.port = config.server.port || 3000;
     this.server = null;
 
@@ -131,8 +133,28 @@ class SlackInteractionServer {
         return;
       }
 
-      // Get or generate today's preview menu (same for all users)
-      const previewMenu = this.usageTracker.getPreviewMenu(today, () => this.getRandomMenu());
+      // Get or generate today's preview menu with weather check (same for all users)
+      const previewData = this.usageTracker.getPreviewMenuWithWeather(today);
+      let previewMenu, weatherInfo;
+
+      if (previewData) {
+        previewMenu = previewData.menu;
+        weatherInfo = previewData.weatherInfo;
+      } else {
+        // 날씨 기반으로 메뉴 생성
+        const weatherBasedResult = await this.getWeatherBasedMenu();
+        previewMenu = weatherBasedResult.menu;
+        weatherInfo = weatherBasedResult.weatherInfo;
+        this.usageTracker.setPreviewMenuWithWeather(today, previewMenu, weatherInfo);
+      }
+
+      // 날씨 정보 메시지 구성
+      let weatherMessage = '';
+      if (weatherInfo?.isIndoorOnly) {
+        weatherMessage = `\n\n${weatherInfo.reason}\n🏠 *실내 메뉴만 추천됩니다!*`;
+      } else if (weatherInfo) {
+        weatherMessage = `\n\n🌡️ 현재 날씨: ${weatherInfo.temperature}°C, ${weatherInfo.description}`;
+      }
 
       // Send preview as ephemeral message (only visible to the user)
       await this.sendEphemeralResponse(responseUrl, {
@@ -142,7 +164,7 @@ class SlackInteractionServer {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `👀 *오늘의 대체 메뉴 미리보기*\n\n🍽️ **${previewMenu}**\n\n이 메뉴는 오늘 하루 동안 모든 사람에게 동일하게 보입니다.\n마음에 들면 "확정" 버튼을, 구내식당을 먹고 싶으면 "취소" 버튼을 눌러주세요!`
+              text: `👀 *오늘의 대체 메뉴 미리보기*${weatherMessage}\n\n🍽️ **${previewMenu}**\n\n이 메뉴는 오늘 하루 동안 모든 사람에게 동일하게 보입니다.\n마음에 들면 "확정" 버튼을, 구내식당을 먹고 싶으면 "취소" 버튼을 눌러주세요!`
             }
           },
           {
@@ -185,7 +207,7 @@ class SlackInteractionServer {
         response_type: 'ephemeral'
       });
 
-      logger.info(`Menu preview shown to user ${userId} (${userName}): ${previewMenu}`);
+      logger.info(`Menu preview shown to user ${userId} (${userName}): ${previewMenu}${weatherInfo?.isIndoorOnly ? ' (실내 메뉴)' : ''}`);
 
     } catch (error) {
       logger.error('Error handling preview menu action:', error);
@@ -329,11 +351,29 @@ class SlackInteractionServer {
         return;
       }
 
-      // Get or generate today's menu (same as preview)
-      const todayMenu = this.usageTracker.getPreviewMenu(today, () => this.getRandomMenu());
+      // Get or generate today's menu with weather check (same as preview)
+      const previewData = this.usageTracker.getPreviewMenuWithWeather(today);
+      let todayMenu, weatherInfo;
+
+      if (previewData) {
+        todayMenu = previewData.menu;
+        weatherInfo = previewData.weatherInfo;
+      } else {
+        // 날씨 기반으로 메뉴 생성
+        const weatherBasedResult = await this.getWeatherBasedMenu();
+        todayMenu = weatherBasedResult.menu;
+        weatherInfo = weatherBasedResult.weatherInfo;
+        this.usageTracker.setPreviewMenuWithWeather(today, todayMenu, weatherInfo);
+      }
 
       // Confirm menu
       this.usageTracker.confirmMenu(today);
+
+      // 날씨 정보 메시지 구성
+      let weatherMessage = '';
+      if (weatherInfo?.isIndoorOnly) {
+        weatherMessage = `\n\n${weatherInfo.reason}\n🏠 실내 메뉴로 선정되었습니다!`;
+      }
 
       // Send public message to channel (instant confirmation)
       const axios = require('axios');
@@ -344,7 +384,7 @@ class SlackInteractionServer {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `🎲 *오늘의 대체 메뉴가 확정되었습니다!*\n\n🍽️ **${todayMenu}**\n\n맛있는 식사 되세요! 😋`
+              text: `🎲 *오늘의 대체 메뉴가 확정되었습니다!*${weatherMessage}\n\n🍽️ **${todayMenu}**\n\n맛있는 식사 되세요! 😋`
             }
           },
           {
@@ -361,7 +401,7 @@ class SlackInteractionServer {
         response_type: 'in_channel' // 채널 전체에 공개
       });
 
-      logger.info(`Menu instantly confirmed by user ${userId} (${userName}): ${todayMenu}`);
+      logger.info(`Menu instantly confirmed by user ${userId} (${userName}): ${todayMenu}${weatherInfo?.isIndoorOnly ? ' (실내 메뉴)' : ''}`);
 
     } catch (error) {
       logger.error('Error handling change menu action:', error);
@@ -451,16 +491,59 @@ class SlackInteractionServer {
     }
   }
 
-  getRandomMenu() {
-    const menus = config.lunch.alternativeMenus;
+  getRandomMenu(forceIndoor = false) {
     const today = new Date().getDay(); // 0=일요일, 1=월요일, ..., 6=토요일
     const excludedMenus = config.lunch.excludedMenusByDay?.[today] || [];
+
+    let menus;
+    if (forceIndoor) {
+      // 실내 메뉴만 사용
+      menus = config.lunch.indoorMenus || config.lunch.alternativeMenus;
+    } else {
+      menus = config.lunch.alternativeMenus;
+    }
 
     // 오늘 제외할 메뉴를 필터링
     const availableMenus = menus.filter(menu => !excludedMenus.includes(menu));
 
     const randomIndex = Math.floor(Math.random() * availableMenus.length);
     return availableMenus[randomIndex];
+  }
+
+  /**
+   * 날씨를 확인하고 적절한 메뉴를 반환
+   * @returns {Object} { menu, weatherInfo }
+   */
+  async getWeatherBasedMenu() {
+    if (!config.weather?.enabled) {
+      return {
+        menu: this.getRandomMenu(false),
+        weatherInfo: null
+      };
+    }
+
+    const weatherCheck = await this.weatherService.checkIndoorWeather(config.weather.coldThreshold);
+
+    if (weatherCheck.shouldStayIndoor) {
+      return {
+        menu: this.getRandomMenu(true), // 실내 메뉴만
+        weatherInfo: {
+          reason: weatherCheck.reason,
+          temperature: weatherCheck.weather.temperature,
+          description: weatherCheck.weather.description,
+          isIndoorOnly: true
+        }
+      };
+    }
+
+    return {
+      menu: this.getRandomMenu(false),
+      weatherInfo: {
+        temperature: weatherCheck.weather.temperature,
+        description: weatherCheck.weather.description,
+        isIndoorOnly: false
+      }
+    };
   }
 
   start() {

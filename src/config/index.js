@@ -44,7 +44,17 @@ const config = {
     excludedMenusByDay: {
       1: ['중화백반'],  // 월요일
       4: ['중화백반']   // 목요일
-    }
+    },
+    // 실내 메뉴 (눈 오거나 영하 5도 이하일 때 구내식당 대신 선택)
+    indoorMenus: process.env.INDOOR_MENUS
+      ? process.env.INDOOR_MENUS.split(',').map(m => m.trim())
+      : ['한우마당', '솔탄', '미켈고깃집', '유미카츠', '소공동뚝배기', '중화백반'],
+  },
+  weather: {
+    // 한파 기준 온도 (이 온도 이하면 실내 메뉴만)
+    coldThreshold: parseInt(process.env.WEATHER_COLD_THRESHOLD || '-5', 10),
+    // 날씨 체크 활성화 여부
+    enabled: process.env.WEATHER_CHECK_ENABLED !== 'false',
   },
 };
 

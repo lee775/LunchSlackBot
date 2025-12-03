@@ -141,6 +141,44 @@ class UsageTracker {
   }
 
   /**
+   * Set the preview menu with weather info for today
+   * @param {string} date - Date in YYYY-MM-DD format
+   * @param {string} menu - Menu name
+   * @param {object} weatherInfo - Weather information
+   */
+  setPreviewMenuWithWeather(date, menu, weatherInfo) {
+    if (!this.usageData[date]) {
+      this.usageData[date] = {
+        userId: null,
+        timestamp: new Date().toISOString(),
+        previewMenu: menu,
+        weatherInfo: weatherInfo,
+        confirmed: false
+      };
+    } else {
+      this.usageData[date].previewMenu = menu;
+      this.usageData[date].weatherInfo = weatherInfo;
+    }
+    this.saveData();
+    logger.info(`Set preview menu with weather for ${date}: ${menu}${weatherInfo?.isIndoorOnly ? ' (실내 메뉴)' : ''}`);
+  }
+
+  /**
+   * Get the preview menu with weather info for today
+   * @param {string} date - Date in YYYY-MM-DD format
+   * @returns {object|null} - { menu, weatherInfo } or null
+   */
+  getPreviewMenuWithWeather(date) {
+    if (this.usageData[date]?.previewMenu) {
+      return {
+        menu: this.usageData[date].previewMenu,
+        weatherInfo: this.usageData[date].weatherInfo || null
+      };
+    }
+    return null;
+  }
+
+  /**
    * Confirm the menu for today
    * @param {string} date - Date in YYYY-MM-DD format
    */

@@ -6,6 +6,7 @@ const TaskScheduler = require('./scheduler');
 const OCRService = require('./services/ocrService');
 const UsageTracker = require('./services/usageTracker');
 const SlackInteractionServer = require('./server');
+const WeatherService = require('./services/weatherService');
 const ngrok = require('@ngrok/ngrok');
 
 class KakaoSlackBot {
@@ -16,6 +17,7 @@ class KakaoSlackBot {
     this.ocrService = new OCRService();
     this.usageTracker = new UsageTracker();
     this.interactionServer = new SlackInteractionServer(this.slackClient, this.usageTracker);
+    this.weatherService = new WeatherService();
     this.tunnel = null;
     this.isRunning = false;
   }
@@ -175,6 +177,49 @@ class KakaoSlackBot {
     logger.info('Starting today menu sync...');
 
     try {
+      // 0. 날씨 체크 - 영하 5도 이하 또는 눈 오는 날 실내 메뉴만 추천 (구내식당 스킵)
+      if (config.weather?.enabled) {
+        logger.info('Checking weather for indoor menu recommendation...');
+        const weatherCheck = await this.weatherService.checkIndoorWeather(config.weather.coldThreshold);
+
+        if (weatherCheck.shouldStayIndoor) {
+          // 실내 메뉴 랜덤 선택
+          const indoorMenus = config.lunch.indoorMenus || [];
+          const today = new Date();
+          const dayOfWeek = today.getDay();
+          const excludedMenus = config.lunch.excludedMenusByDay?.[dayOfWeek] || [];
+          const availableIndoorMenus = indoorMenus.filter(m => !excludedMenus.includes(m));
+
+          if (availableIndoorMenus.length > 0) {
+            const selectedMenu = availableIndoorMenus[Math.floor(Math.random() * availableIndoorMenus.length)];
+            logger.info(`Indoor menu selected due to weather: ${selectedMenu}`);
+
+            // 날씨가 안좋으면 구내식당 메뉴판 없이 바로 실내 메뉴 추천만 전송
+            const dayName = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'][dayOfWeek];
+            const todayDate = today.toLocaleDateString('ko-KR');
+
+            const message = `🍽️ *오늘의 점심 추천!*\n\n` +
+                          `📅 ${todayDate} (${dayName})\n\n` +
+                          `${weatherCheck.reason}\n\n` +
+                          `🏠 *오늘은 따뜻한 실내에서 식사하세요!*\n\n` +
+                          `🎲 *추천 메뉴: ${selectedMenu}*\n\n` +
+                          `🥢 맛있는 식사 되세요!`;
+
+            await this.slackClient.sendMessage(config.slack.lunchChannelId, message);
+
+            logger.info('Indoor menu recommendation sent (skipped cafeteria menu due to weather)');
+            return {
+              success: true,
+              timestamp: new Date().toISOString(),
+              indoorMenu: selectedMenu,
+              reason: weatherCheck.reason,
+              skippedCafeteria: true
+            };
+          }
+        }
+      }
+
+      // 날씨가 괜찮으면 기존 로직 실행 (구내식당 메뉴판 + 버튼)
       // 1. 카카오톡 "오늘의 식단" 게시글에서 메뉴 정보 가져오기
       logger.info('Fetching today menu from KakaoTalk Plus Friend...');
       const menuData = await this.kakaoScraper.getTodayMenu(config.kakao.plusFriendUrl);
