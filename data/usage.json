@@ -1,0 +1,13 @@
+{
+  "2025-12-04": {
+    "userId": null,
+    "timestamp": "2025-12-04T03:01:31.361Z",
+    "previewMenu": "미켈고깃집",
+    "weatherInfo": {
+      "temperature": -3.8,
+      "description": "맑음",
+      "isIndoorOnly": false
+    },
+    "confirmed": false
+  }
+}

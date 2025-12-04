@@ -220,6 +220,19 @@ class KakaoSlackBot {
       }
 
       // 날씨가 괜찮으면 기존 로직 실행 (구내식당 메뉴판 + 버튼)
+      // 현재 기온 가져오기
+      let currentTemperature = null;
+      let weatherDescription = null;
+      try {
+        const weather = await this.weatherService.getCurrentWeather();
+        if (!weather.error) {
+          currentTemperature = weather.temperature;
+          weatherDescription = weather.description;
+        }
+      } catch (weatherError) {
+        logger.warn('Failed to get weather for menu message:', weatherError.message);
+      }
+
       // 1. 카카오톡 "오늘의 식단" 게시글에서 메뉴 정보 가져오기
       logger.info('Fetching today menu from KakaoTalk Plus Friend...');
       const menuData = await this.kakaoScraper.getTodayMenu(config.kakao.plusFriendUrl);
@@ -235,9 +248,15 @@ class KakaoSlackBot {
       const dayOfWeek = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'][today.getDay()];
       const todayDate = today.toLocaleDateString('ko-KR');
 
+      // 기온 정보 문자열 생성
+      const temperatureInfo = currentTemperature !== null
+        ? `🌡️ 현재 기온: ${currentTemperature}°C (${weatherDescription})\n`
+        : '';
+
       // 메뉴 텍스트가 있으면 포함, 없으면 기본 메시지
       let message = `🍽️ *오늘의 점심메뉴입니다!*\n\n` +
                     `📅 ${todayDate} (${dayOfWeek})\n` +
+                    `${temperatureInfo}` +
                     `⏰ 업데이트: ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}\n\n`;
 
       if (menuData.menuText && menuData.menuText.length > 0) {
