@@ -99,6 +99,11 @@ class SlackInteractionServer {
         if (action.action_id === 'reset_menu_usage') {
           await this.handleResetUsageAction(user, response_url, channel);
         }
+
+        // Handle "reroll menu" button click (이 메뉴는 절대 싫다)
+        if (action.action_id === 'reroll_lunch_menu') {
+          await this.handleRerollMenuAction(user, response_url, channel);
+        }
       }
     } catch (error) {
       logger.error('Error processing interaction:', error);
@@ -403,12 +408,161 @@ class SlackInteractionServer {
 
       logger.info(`Menu instantly confirmed by user ${userId} (${userName}): ${todayMenu}${weatherInfo?.isIndoorOnly ? ' (실내 메뉴)' : ''}`);
 
+      // 3초 후에 "이 메뉴는 절대 싫다" 버튼 표시
+      setTimeout(async () => {
+        try {
+          await axios.post(responseUrl, {
+            text: '이 메뉴가 마음에 안 드시나요?',
+            blocks: [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: '🤔 *혹시 이 메뉴가 마음에 안 드시나요?*'
+                }
+              },
+              {
+                type: 'actions',
+                block_id: 'reroll_actions',
+                elements: [
+                  {
+                    type: 'button',
+                    text: {
+                      type: 'plain_text',
+                      text: '🙅 이 메뉴는 절대 싫다!',
+                      emoji: true
+                    },
+                    style: 'danger',
+                    action_id: 'reroll_lunch_menu'
+                  }
+                ]
+              }
+            ],
+            replace_original: false,
+            response_type: 'in_channel'
+          });
+        } catch (error) {
+          logger.error('Error sending reroll button:', error);
+        }
+      }, 3000);
+
     } catch (error) {
       logger.error('Error handling change menu action:', error);
 
       // Send error message
       await this.sendEphemeralResponse(responseUrl, {
         text: '❌ 메뉴 변경 중 오류가 발생했습니다. 다시 시도해주세요.',
+        response_type: 'ephemeral'
+      });
+    }
+  }
+
+  async handleRerollMenuAction(user, responseUrl, channel) {
+    try {
+      const userId = user.id;
+      const userName = user.name || user.id;
+      const today = new Date().toISOString().split('T')[0];
+
+      // 현재 메뉴 가져오기
+      const currentMenu = this.usageTracker.getPreviewMenu(today);
+
+      // 확정 상태 해제
+      this.usageTracker.clearToday(today);
+
+      // 날씨 기반으로 새 메뉴 생성 (현재 메뉴 제외)
+      const weatherBasedResult = await this.getWeatherBasedMenu();
+      let newMenu = weatherBasedResult.menu;
+      const weatherInfo = weatherBasedResult.weatherInfo;
+
+      // 현재 메뉴와 같으면 다시 선택 (최대 5번 시도)
+      let attempts = 0;
+      while (newMenu === currentMenu && attempts < 5) {
+        const result = await this.getWeatherBasedMenu();
+        newMenu = result.menu;
+        attempts++;
+      }
+
+      // 새 메뉴로 저장 및 확정
+      this.usageTracker.setPreviewMenuWithWeather(today, newMenu, weatherInfo);
+      this.usageTracker.confirmMenu(today);
+
+      // 날씨 정보 메시지 구성
+      let weatherMessage = '';
+      if (weatherInfo?.isIndoorOnly) {
+        weatherMessage = `\n\n${weatherInfo.reason}\n🏠 실내 메뉴로 선정되었습니다!`;
+      }
+
+      // 채널에 새 메뉴 메시지 전송
+      const axios = require('axios');
+      await axios.post(responseUrl, {
+        text: `🔄 *메뉴가 다시 선택되었습니다!*`,
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `🔄 *메뉴가 다시 선택되었습니다!*${weatherMessage}\n\n~~${currentMenu}~~ ➡️ 🍽️ **${newMenu}**\n\n이번엔 마음에 드시길! 😊`
+            }
+          },
+          {
+            type: 'context',
+            elements: [
+              {
+                type: 'mrkdwn',
+                text: `💡 ${new Date().toLocaleDateString('ko-KR')} | 메뉴 재선택 완료`
+              }
+            ]
+          }
+        ],
+        replace_original: false,
+        response_type: 'in_channel'
+      });
+
+      logger.info(`Menu rerolled by user ${userId} (${userName}): ${currentMenu} -> ${newMenu}`);
+
+      // 3초 후에 다시 "이 메뉴는 절대 싫다" 버튼 표시
+      setTimeout(async () => {
+        try {
+          await axios.post(responseUrl, {
+            text: '이 메뉴가 마음에 안 드시나요?',
+            blocks: [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: '🤔 *혹시 이 메뉴도 마음에 안 드시나요?*'
+                }
+              },
+              {
+                type: 'actions',
+                block_id: 'reroll_actions',
+                elements: [
+                  {
+                    type: 'button',
+                    text: {
+                      type: 'plain_text',
+                      text: '🙅 이 메뉴는 절대 싫다!',
+                      emoji: true
+                    },
+                    style: 'danger',
+                    action_id: 'reroll_lunch_menu'
+                  }
+                ]
+              }
+            ],
+            replace_original: false,
+            response_type: 'in_channel'
+          });
+        } catch (error) {
+          logger.error('Error sending reroll button:', error);
+        }
+      }, 3000);
+
+    } catch (error) {
+      logger.error('Error handling reroll menu action:', error);
+
+      await this.sendEphemeralResponse(responseUrl, {
+        text: '❌ 메뉴 재선택 중 오류가 발생했습니다. 다시 시도해주세요.',
         response_type: 'ephemeral'
       });
     }
