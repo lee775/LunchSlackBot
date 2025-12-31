@@ -202,7 +202,9 @@ class KakaoSlackBot {
                           `📅 ${todayDate} (${dayName})\n\n` +
                           `${weatherCheck.reason}\n\n` +
                           `🏠 *오늘은 따뜻한 실내에서 식사하세요!*\n\n` +
-                          `🎲 *추천 메뉴: ${selectedMenu}*\n\n` +
+                          `━━━━━━━━━━━━━━━━━━━━\n\n` +
+                          `>  *${selectedMenu}*\n\n` +
+                          `━━━━━━━━━━━━━━━━━━━━\n\n` +
                           `🥢 맛있는 식사 되세요!`;
 
             await this.slackClient.sendMessage(config.slack.lunchChannelId, message);
