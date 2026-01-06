@@ -12,8 +12,13 @@
   },
   "2026-01-06": {
     "userId": null,
-    "timestamp": "2026-01-06T03:02:18.352Z",
-    "previewMenu": "쌀국수",
-    "confirmed": false
+    "timestamp": "2026-01-06T03:19:06.073Z",
+    "previewMenu": "초밥",
+    "confirmed": true,
+    "weatherInfo": {
+      "temperature": -0.7,
+      "description": "맑음",
+      "isIndoorOnly": false
+    }
   }
 }

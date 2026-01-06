@@ -104,6 +104,11 @@ class SlackInteractionServer {
         if (action.action_id === 'reroll_lunch_menu') {
           await this.handleRerollMenuAction(user, response_url, channel);
         }
+
+        // Handle "test change menu" button click (테스트용 - 횟수 제한 없음)
+        if (action.action_id === 'test_change_menu') {
+          await this.handleTestChangeMenuAction(user, response_url, channel);
+        }
       }
     } catch (error) {
       logger.error('Error processing interaction:', error);
@@ -452,6 +457,68 @@ class SlackInteractionServer {
       // Send error message
       await this.sendEphemeralResponse(responseUrl, {
         text: '❌ 메뉴 변경 중 오류가 발생했습니다. 다시 시도해주세요.',
+        response_type: 'ephemeral'
+      });
+    }
+  }
+
+  // 테스트용 메뉴 변경 (횟수 제한 없음)
+  async handleTestChangeMenuAction(user, responseUrl, channel) {
+    try {
+      const userId = user.id;
+      const userName = user.name || user.id;
+      const today = new Date().toISOString().split('T')[0];
+
+      // 기존 확정 상태 초기화 (테스트이므로 무조건 초기화)
+      this.usageTracker.clearToday(today);
+
+      // 날씨 기반으로 새 메뉴 생성
+      const weatherBasedResult = await this.getWeatherBasedMenu();
+      const todayMenu = weatherBasedResult.menu;
+      const weatherInfo = weatherBasedResult.weatherInfo;
+
+      // 새 메뉴 저장
+      this.usageTracker.setPreviewMenuWithWeather(today, todayMenu, weatherInfo);
+
+      // 날씨 정보 메시지 구성
+      let weatherMessage = '';
+      if (weatherInfo?.isIndoorOnly) {
+        weatherMessage = `\n\n${weatherInfo.reason}\n🏠 실내 메뉴로 선정되었습니다!`;
+      }
+
+      // Send message to channel
+      const axios = require('axios');
+      await axios.post(responseUrl, {
+        text: `🧪 *[테스트] 오늘의 대체 메뉴가 변경되었습니다!*`,
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `🧪 *[테스트] 오늘의 대체 메뉴가 변경되었습니다!*${weatherMessage}\n\n🍽️ **${todayMenu}**\n\n_이 버튼은 테스트용으로 횟수 제한이 없습니다._`
+            }
+          },
+          {
+            type: 'context',
+            elements: [
+              {
+                type: 'mrkdwn',
+                text: `🧪 테스트 모드 | ${new Date().toLocaleDateString('ko-KR')} | 변경자: <@${userId}>`
+              }
+            ]
+          }
+        ],
+        replace_original: false,
+        response_type: 'in_channel'
+      });
+
+      logger.info(`[TEST] Menu changed by user ${userId} (${userName}): ${todayMenu}${weatherInfo?.isIndoorOnly ? ' (실내 메뉴)' : ''}`);
+
+    } catch (error) {
+      logger.error('Error handling test change menu action:', error);
+
+      await this.sendEphemeralResponse(responseUrl, {
+        text: '❌ 테스트 메뉴 변경 중 오류가 발생했습니다.',
         response_type: 'ephemeral'
       });
     }

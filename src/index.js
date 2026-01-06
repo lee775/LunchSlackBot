@@ -161,8 +161,8 @@ class KakaoSlackBot {
       await this.slackClient.sendMessageWithButton(
         config.slack.startupChannelId,
         message,
-        '🎲 오늘의 메뉴 변경',
-        'change_lunch_menu',
+        '🎲 오늘의 메뉴 변경 (테스트)',
+        'test_change_menu',
         'primary'
       );
       logger.info('Startup notification with reset button sent to Slack');
