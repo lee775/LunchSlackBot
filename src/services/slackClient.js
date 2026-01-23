@@ -333,6 +333,68 @@ class SlackClient {
       };
     }
   }
+
+  async postIndoorMenuChangeButton(channelId) {
+    try {
+      const blocks = [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: '🤔 *혹시 이 메뉴가 마음에 안 드시나요?*'
+          }
+        },
+        {
+          type: 'actions',
+          block_id: 'indoor_menu_actions',
+          elements: [
+            {
+              type: 'button',
+              text: {
+                type: 'plain_text',
+                text: '🔄 다른 실내 메뉴로 변경',
+                emoji: true
+              },
+              style: 'primary',
+              action_id: 'reroll_lunch_menu'
+            }
+          ]
+        },
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: '💡 날씨가 추워서 실내 메뉴만 추천됩니다. 버튼을 누르면 다른 실내 메뉴로 변경돼요!'
+            }
+          ]
+        }
+      ];
+
+      const result = await this.client.chat.postMessage({
+        channel: channelId,
+        text: '실내 메뉴 변경 버튼',
+        blocks: blocks
+      });
+
+      if (result.ok) {
+        logger.info(`Indoor menu change button posted successfully to channel: ${channelId}`);
+        return {
+          success: true,
+          messageTs: result.ts
+        };
+      } else {
+        throw new Error(`Slack message failed: ${result.error}`);
+      }
+
+    } catch (error) {
+      logger.error('Error posting indoor menu change button to Slack:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
 }
 
 module.exports = SlackClient;

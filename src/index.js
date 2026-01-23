@@ -187,12 +187,22 @@ class KakaoSlackBot {
           const indoorMenus = config.lunch.indoorMenus || [];
           const today = new Date();
           const dayOfWeek = today.getDay();
+          const todayStr = today.toISOString().split('T')[0];
           const excludedMenus = config.lunch.excludedMenusByDay?.[dayOfWeek] || [];
           const availableIndoorMenus = indoorMenus.filter(m => !excludedMenus.includes(m));
 
           if (availableIndoorMenus.length > 0) {
             const selectedMenu = availableIndoorMenus[Math.floor(Math.random() * availableIndoorMenus.length)];
             logger.info(`Indoor menu selected due to weather: ${selectedMenu}`);
+
+            // usageTracker에 메뉴 저장 (버튼으로 변경 가능하도록)
+            this.usageTracker.setPreviewMenuWithWeather(todayStr, selectedMenu, {
+              reason: weatherCheck.reason,
+              temperature: weatherCheck.weather.temperature,
+              description: weatherCheck.weather.description,
+              isIndoorOnly: true
+            });
+            this.usageTracker.confirmMenu(todayStr);
 
             // 날씨가 안좋으면 구내식당 메뉴판 없이 바로 실내 메뉴 추천만 전송
             const dayName = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'][dayOfWeek];
@@ -209,7 +219,11 @@ class KakaoSlackBot {
 
             await this.slackClient.sendMessage(config.slack.lunchChannelId, message);
 
-            logger.info('Indoor menu recommendation sent (skipped cafeteria menu due to weather)');
+            // 메뉴 변경 버튼 추가
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            await this.slackClient.postIndoorMenuChangeButton(config.slack.lunchChannelId);
+
+            logger.info('Indoor menu recommendation with change button sent');
             return {
               success: true,
               timestamp: new Date().toISOString(),

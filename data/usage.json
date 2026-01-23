@@ -1,24 +1,25 @@
 {
-  "2026-01-05": {
+  "2026-01-16": {
     "userId": null,
-    "timestamp": "2026-01-05T03:10:23.646Z",
-    "previewMenu": "소공동뚝배기",
-    "weatherInfo": {
-      "temperature": -1.7,
-      "description": "맑음",
-      "isIndoorOnly": false
-    },
-    "confirmed": false
-  },
-  "2026-01-06": {
-    "userId": null,
-    "timestamp": "2026-01-06T03:19:06.073Z",
-    "previewMenu": "초밥",
+    "timestamp": "2026-01-16T04:05:39.010Z",
+    "previewMenu": "감자탕",
     "confirmed": true,
     "weatherInfo": {
-      "temperature": -0.7,
+      "temperature": 4.3,
       "description": "맑음",
       "isIndoorOnly": false
+    }
+  },
+  "2026-01-21": {
+    "userId": null,
+    "timestamp": "2026-01-21T03:01:36.135Z",
+    "previewMenu": "소공동뚝배기",
+    "confirmed": false,
+    "weatherInfo": {
+      "reason": "🥶 현재 기온이 -10.6°C로 매우 춥습니다!",
+      "temperature": -10.6,
+      "description": "맑음",
+      "isIndoorOnly": true
     }
   }
 }

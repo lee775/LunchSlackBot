@@ -229,21 +229,23 @@ class UsageTracker {
   }
 
   /**
-   * Clear today's usage data (keeps preview menu)
+   * Clear today's usage data (keeps preview menu and weather info)
    * @param {string} date - Date in YYYY-MM-DD format
    */
   clearToday(date) {
     if (this.usageData[date]) {
-      // Keep preview menu, only reset confirmation status
+      // Keep preview menu and weather info, only reset confirmation status
       const previewMenu = this.usageData[date].previewMenu;
+      const weatherInfo = this.usageData[date].weatherInfo;
       this.usageData[date] = {
         userId: null,
         timestamp: new Date().toISOString(),
         previewMenu: previewMenu,
+        weatherInfo: weatherInfo,
         confirmed: false
       };
       this.saveData();
-      logger.info(`Cleared usage data for ${date}, kept preview menu: ${previewMenu}`);
+      logger.info(`Cleared usage data for ${date}, kept preview menu: ${previewMenu}${weatherInfo?.isIndoorOnly ? ' (실내 메뉴)' : ''}`);
       return true;
     }
     return false;
