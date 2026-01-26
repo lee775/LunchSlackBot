@@ -782,11 +782,24 @@ class SlackInteractionServer {
 
       // 현재 확정된 메뉴
       if (currentMenuData?.menu) {
+        let menuStatus = isConfirmed ? '✅ 확정' : '⏳ 미확정';
+        let weatherNote = '';
+        if (currentMenuData.weatherInfo?.isIndoorOnly) {
+          weatherNote = `\n${currentMenuData.weatherInfo.reason}`;
+        }
         blocks.push({
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `🍽️ *오늘의 메뉴:* ${currentMenuData.menu} ${isConfirmed ? '✅ 확정' : '⏳ 미확정'}`
+            text: `🍽️ *오늘의 메뉴:* ${currentMenuData.menu} ${menuStatus}${weatherNote}`
+          }
+        });
+      } else {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `🍽️ *오늘의 메뉴:* ⏰ 아직 선정되지 않았습니다\n_12시에 자동으로 메뉴가 추천됩니다!_`
           }
         });
       }
