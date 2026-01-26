@@ -38,6 +38,33 @@ class SlackInteractionServer {
       res.json({ status: 'ok', timestamp: new Date().toISOString() });
     });
 
+    // Slack Slash Commands endpoint
+    this.app.post('/slack/commands', async (req, res) => {
+      try {
+        const { command, user_id, user_name, channel_id } = req.body;
+
+        logger.info('Received Slack command:', { command, user_id, user_name });
+
+        // /메뉴 명령어 처리
+        if (command === '/메뉴' || command === '/menu') {
+          const response = await this.handleMenuListCommand(user_id, channel_id);
+          res.json(response);
+        } else {
+          res.json({
+            response_type: 'ephemeral',
+            text: `알 수 없는 명령어입니다: ${command}`
+          });
+        }
+
+      } catch (error) {
+        logger.error('Error handling Slack command:', error);
+        res.json({
+          response_type: 'ephemeral',
+          text: '❌ 명령어 처리 중 오류가 발생했습니다.'
+        });
+      }
+    });
+
     // Slack Interactive Components endpoint
     this.app.post('/slack/interactions', async (req, res) => {
       try {
@@ -533,21 +560,22 @@ class SlackInteractionServer {
       // 현재 메뉴 가져오기
       const currentMenu = this.usageTracker.getPreviewMenu(today);
 
+      // 현재 메뉴를 제외 목록에 추가 (다시 나오지 않도록)
+      if (currentMenu) {
+        this.usageTracker.addExcludedMenu(today, currentMenu);
+      }
+
       // 확정 상태 해제
       this.usageTracker.clearToday(today);
 
-      // 날씨 기반으로 새 메뉴 생성 (현재 메뉴 제외)
-      const weatherBasedResult = await this.getWeatherBasedMenu();
-      let newMenu = weatherBasedResult.menu;
-      const weatherInfo = weatherBasedResult.weatherInfo;
+      // 제외 목록 가져오기
+      const excludedMenus = this.usageTracker.getExcludedMenus(today);
+      logger.info(`Excluded menus for reroll: ${excludedMenus.join(', ') || 'none'}`);
 
-      // 현재 메뉴와 같으면 다시 선택 (최대 5번 시도)
-      let attempts = 0;
-      while (newMenu === currentMenu && attempts < 5) {
-        const result = await this.getWeatherBasedMenu();
-        newMenu = result.menu;
-        attempts++;
-      }
+      // 날씨 기반으로 새 메뉴 생성 (제외 목록 적용)
+      const weatherBasedResult = await this.getWeatherBasedMenu(excludedMenus);
+      const newMenu = weatherBasedResult.menu;
+      const weatherInfo = weatherBasedResult.weatherInfo;
 
       // 새 메뉴로 저장 및 확정
       this.usageTracker.setPreviewMenuWithWeather(today, newMenu, weatherInfo);
@@ -585,7 +613,7 @@ class SlackInteractionServer {
         response_type: 'in_channel'
       });
 
-      logger.info(`Menu rerolled by user ${userId} (${userName}): ${currentMenu} -> ${newMenu}`);
+      logger.info(`Menu rerolled by user ${userId} (${userName}): ${currentMenu} -> ${newMenu} (excluded: ${excludedMenus.length} menus)`);
 
       // 3초 후에 다시 "이 메뉴는 절대 싫다" 버튼 표시
       setTimeout(async () => {
@@ -702,6 +730,144 @@ class SlackInteractionServer {
     }
   }
 
+  async handleMenuListCommand(userId, channelId) {
+    try {
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      const dayOfWeek = today.getDay();
+      const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+
+      // 전체 메뉴 목록
+      const allMenus = config.lunch.alternativeMenus || [];
+      const indoorMenus = config.lunch.indoorMenus || [];
+
+      // 오늘 요일별 제외 메뉴
+      const excludedByDay = config.lunch.excludedMenusByDay?.[dayOfWeek] || [];
+
+      // 오늘 사용자가 싫다고 한 메뉴
+      const excludedByUser = this.usageTracker.getExcludedMenus(todayStr);
+
+      // 현재 확정된 메뉴
+      const currentMenuData = this.usageTracker.getPreviewMenuWithWeather(todayStr);
+      const isConfirmed = this.usageTracker.isMenuConfirmed(todayStr);
+
+      // 실제 선택 가능한 메뉴 계산
+      const allExcluded = [...excludedByDay, ...excludedByUser];
+      const availableMenus = allMenus.filter(m => !allExcluded.includes(m));
+      const availableIndoorMenus = indoorMenus.filter(m => !allExcluded.includes(m));
+
+      // 메시지 구성
+      let blocks = [
+        {
+          type: 'header',
+          text: {
+            type: 'plain_text',
+            text: '📋 점심 메뉴 현황',
+            emoji: true
+          }
+        },
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: `📅 ${today.toLocaleDateString('ko-KR')} (${dayNames[dayOfWeek]}요일)`
+            }
+          ]
+        },
+        {
+          type: 'divider'
+        }
+      ];
+
+      // 현재 확정된 메뉴
+      if (currentMenuData?.menu) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `🍽️ *오늘의 메뉴:* ${currentMenuData.menu} ${isConfirmed ? '✅ 확정' : '⏳ 미확정'}`
+          }
+        });
+      }
+
+      // 제외된 메뉴
+      if (excludedByUser.length > 0) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `🚫 *오늘 제외된 메뉴 (${excludedByUser.length}개):*\n${excludedByUser.map(m => `~${m}~`).join(', ')}`
+          }
+        });
+      }
+
+      // 요일별 제외 메뉴
+      if (excludedByDay.length > 0) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `📆 *${dayNames[dayOfWeek]}요일 제외 메뉴:* ${excludedByDay.join(', ')}`
+          }
+        });
+      }
+
+      blocks.push({ type: 'divider' });
+
+      // 선택 가능한 일반 메뉴
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `🎲 *선택 가능한 메뉴 (${availableMenus.length}개):*\n${availableMenus.join(', ') || '없음'}`
+        }
+      });
+
+      // 선택 가능한 실내 메뉴
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `🏠 *실내 메뉴 (${availableIndoorMenus.length}개):*\n${availableIndoorMenus.join(', ') || '없음'}`
+        }
+      });
+
+      blocks.push({ type: 'divider' });
+
+      // 전체 메뉴 목록
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `📝 *전체 메뉴 목록 (${allMenus.length}개):*\n${allMenus.join(', ')}`
+        }
+      });
+
+      blocks.push({
+        type: 'context',
+        elements: [
+          {
+            type: 'mrkdwn',
+            text: '💡 제외된 메뉴는 다음날 자동으로 초기화됩니다.'
+          }
+        ]
+      });
+
+      return {
+        response_type: 'ephemeral',
+        blocks: blocks
+      };
+
+    } catch (error) {
+      logger.error('Error handling menu list command:', error);
+      return {
+        response_type: 'ephemeral',
+        text: '❌ 메뉴 목록을 가져오는 중 오류가 발생했습니다.'
+      };
+    }
+  }
+
   async sendEphemeralResponse(responseUrl, message) {
     try {
       const axios = require('axios');
@@ -712,9 +878,9 @@ class SlackInteractionServer {
     }
   }
 
-  getRandomMenu(forceIndoor = false) {
+  getRandomMenu(forceIndoor = false, additionalExcluded = []) {
     const today = new Date().getDay(); // 0=일요일, 1=월요일, ..., 6=토요일
-    const excludedMenus = config.lunch.excludedMenusByDay?.[today] || [];
+    const excludedMenusByDay = config.lunch.excludedMenusByDay?.[today] || [];
 
     let menus;
     if (forceIndoor) {
@@ -724,8 +890,18 @@ class SlackInteractionServer {
       menus = config.lunch.alternativeMenus;
     }
 
-    // 오늘 제외할 메뉴를 필터링
-    const availableMenus = menus.filter(menu => !excludedMenus.includes(menu));
+    // 오늘 요일별 제외 메뉴 + 사용자가 싫다고 한 메뉴 모두 필터링
+    const allExcluded = [...excludedMenusByDay, ...additionalExcluded];
+    const availableMenus = menus.filter(menu => !allExcluded.includes(menu));
+
+    // 모든 메뉴가 제외되었으면 원래 메뉴에서 선택 (요일별 제외만 적용)
+    if (availableMenus.length === 0) {
+      const fallbackMenus = menus.filter(menu => !excludedMenusByDay.includes(menu));
+      if (fallbackMenus.length === 0) {
+        return menus[Math.floor(Math.random() * menus.length)];
+      }
+      return fallbackMenus[Math.floor(Math.random() * fallbackMenus.length)];
+    }
 
     const randomIndex = Math.floor(Math.random() * availableMenus.length);
     return availableMenus[randomIndex];
@@ -733,12 +909,13 @@ class SlackInteractionServer {
 
   /**
    * 날씨를 확인하고 적절한 메뉴를 반환
+   * @param {string[]} excludedMenus - 제외할 메뉴 목록
    * @returns {Object} { menu, weatherInfo }
    */
-  async getWeatherBasedMenu() {
+  async getWeatherBasedMenu(excludedMenus = []) {
     if (!config.weather?.enabled) {
       return {
-        menu: this.getRandomMenu(false),
+        menu: this.getRandomMenu(false, excludedMenus),
         weatherInfo: null
       };
     }
@@ -747,7 +924,7 @@ class SlackInteractionServer {
 
     if (weatherCheck.shouldStayIndoor) {
       return {
-        menu: this.getRandomMenu(true), // 실내 메뉴만
+        menu: this.getRandomMenu(true, excludedMenus), // 실내 메뉴만
         weatherInfo: {
           reason: weatherCheck.reason,
           temperature: weatherCheck.weather.temperature,
@@ -758,7 +935,7 @@ class SlackInteractionServer {
     }
 
     return {
-      menu: this.getRandomMenu(false),
+      menu: this.getRandomMenu(false, excludedMenus),
       weatherInfo: {
         temperature: weatherCheck.weather.temperature,
         description: weatherCheck.weather.description,

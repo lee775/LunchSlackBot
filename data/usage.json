@@ -1,15 +1,4 @@
 {
-  "2026-01-16": {
-    "userId": null,
-    "timestamp": "2026-01-16T04:05:39.010Z",
-    "previewMenu": "감자탕",
-    "confirmed": true,
-    "weatherInfo": {
-      "temperature": 4.3,
-      "description": "맑음",
-      "isIndoorOnly": false
-    }
-  },
   "2026-01-21": {
     "userId": null,
     "timestamp": "2026-01-21T03:01:36.135Z",
@@ -21,5 +10,29 @@
       "description": "맑음",
       "isIndoorOnly": true
     }
+  },
+  "2026-01-23": {
+    "userId": null,
+    "timestamp": "2026-01-23T03:48:57.556Z",
+    "previewMenu": "소공동뚝배기",
+    "weatherInfo": {
+      "reason": "🥶 현재 기온이 -4.9°C로 매우 춥습니다!",
+      "temperature": -4.9,
+      "description": "대체로 맑음",
+      "isIndoorOnly": true
+    },
+    "confirmed": true
+  },
+  "2026-01-26": {
+    "userId": null,
+    "timestamp": "2026-01-26T03:13:49.389Z",
+    "previewMenu": "솔탄",
+    "weatherInfo": {
+      "reason": "🥶 현재 기온이 -4.5°C로 매우 춥습니다!",
+      "temperature": -4.5,
+      "description": "부분적으로 흐림",
+      "isIndoorOnly": true
+    },
+    "confirmed": true
   }
 }

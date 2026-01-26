@@ -153,11 +153,15 @@ class UsageTracker {
         timestamp: new Date().toISOString(),
         previewMenu: menu,
         weatherInfo: weatherInfo,
-        confirmed: false
+        confirmed: false,
+        excludedMenus: []
       };
     } else {
       this.usageData[date].previewMenu = menu;
       this.usageData[date].weatherInfo = weatherInfo;
+      if (!this.usageData[date].excludedMenus) {
+        this.usageData[date].excludedMenus = [];
+      }
     }
     this.saveData();
     logger.info(`Set preview menu with weather for ${date}: ${menu}${weatherInfo?.isIndoorOnly ? ' (실내 메뉴)' : ''}`);
@@ -176,6 +180,41 @@ class UsageTracker {
       };
     }
     return null;
+  }
+
+  /**
+   * Add a menu to the excluded list for today
+   * @param {string} date - Date in YYYY-MM-DD format
+   * @param {string} menu - Menu name to exclude
+   */
+  addExcludedMenu(date, menu) {
+    if (!this.usageData[date]) {
+      this.usageData[date] = {
+        userId: null,
+        timestamp: new Date().toISOString(),
+        previewMenu: null,
+        weatherInfo: null,
+        confirmed: false,
+        excludedMenus: []
+      };
+    }
+    if (!this.usageData[date].excludedMenus) {
+      this.usageData[date].excludedMenus = [];
+    }
+    if (!this.usageData[date].excludedMenus.includes(menu)) {
+      this.usageData[date].excludedMenus.push(menu);
+      this.saveData();
+      logger.info(`Added excluded menu for ${date}: ${menu} (total excluded: ${this.usageData[date].excludedMenus.length})`);
+    }
+  }
+
+  /**
+   * Get the excluded menus for today
+   * @param {string} date - Date in YYYY-MM-DD format
+   * @returns {string[]} - Array of excluded menu names
+   */
+  getExcludedMenus(date) {
+    return this.usageData[date]?.excludedMenus || [];
   }
 
   /**
@@ -229,23 +268,25 @@ class UsageTracker {
   }
 
   /**
-   * Clear today's usage data (keeps preview menu and weather info)
+   * Clear today's usage data (keeps preview menu, weather info, and excluded menus)
    * @param {string} date - Date in YYYY-MM-DD format
    */
   clearToday(date) {
     if (this.usageData[date]) {
-      // Keep preview menu and weather info, only reset confirmation status
+      // Keep preview menu, weather info, and excluded menus, only reset confirmation status
       const previewMenu = this.usageData[date].previewMenu;
       const weatherInfo = this.usageData[date].weatherInfo;
+      const excludedMenus = this.usageData[date].excludedMenus || [];
       this.usageData[date] = {
         userId: null,
         timestamp: new Date().toISOString(),
         previewMenu: previewMenu,
         weatherInfo: weatherInfo,
-        confirmed: false
+        confirmed: false,
+        excludedMenus: excludedMenus
       };
       this.saveData();
-      logger.info(`Cleared usage data for ${date}, kept preview menu: ${previewMenu}${weatherInfo?.isIndoorOnly ? ' (실내 메뉴)' : ''}`);
+      logger.info(`Cleared usage data for ${date}, kept preview menu: ${previewMenu}${weatherInfo?.isIndoorOnly ? ' (실내 메뉴)' : ''}, excluded: ${excludedMenus.length} menus`);
       return true;
     }
     return false;
