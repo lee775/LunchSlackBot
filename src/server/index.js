@@ -815,13 +815,20 @@ class SlackInteractionServer {
         });
       }
 
-      // 요일별 제외 메뉴
-      if (excludedByDay.length > 0) {
+      // 요일별 제외 메뉴 (전체 설정 표시)
+      const excludedMenusByDay = config.lunch.excludedMenusByDay || {};
+      const excludedDayEntries = Object.entries(excludedMenusByDay);
+      if (excludedDayEntries.length > 0) {
+        const excludedDayText = excludedDayEntries
+          .map(([day, menus]) => `${dayNames[day]}요일: ${menus.join(', ')}`)
+          .join('\n');
+
+        const isTodayExcluded = excludedByDay.length > 0;
         blocks.push({
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `📆 *${dayNames[dayOfWeek]}요일 제외 메뉴:* ${excludedByDay.join(', ')}`
+            text: `📆 *요일별 제외 메뉴:*\n${excludedDayText}${isTodayExcluded ? `\n\n_👉 오늘(${dayNames[dayOfWeek]})은 ${excludedByDay.join(', ')} 제외_` : ''}`
           }
         });
       }
