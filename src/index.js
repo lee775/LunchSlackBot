@@ -177,10 +177,20 @@ class KakaoSlackBot {
     logger.info('Starting today menu sync...');
 
     try {
-      // 0. 날씨 체크 - 영하 5도 이하 또는 눈 오는 날 실내 메뉴만 추천 (구내식당 스킵)
+      // 0. 날씨 정보 먼저 가져오기 (한 번만 호출)
+      let currentTemperature = null;
+      let weatherDescription = null;
+      let weatherCheck = null;
+
       if (config.weather?.enabled) {
         logger.info('Checking weather for indoor menu recommendation...');
-        const weatherCheck = await this.weatherService.checkIndoorWeather(config.weather.coldThreshold);
+        weatherCheck = await this.weatherService.checkIndoorWeather(config.weather.coldThreshold);
+
+        // 날씨 정보 저장 (나중에 메시지에 사용)
+        if (weatherCheck.weather && !weatherCheck.weather.error) {
+          currentTemperature = weatherCheck.weather.temperature;
+          weatherDescription = weatherCheck.weather.description;
+        }
 
         if (weatherCheck.shouldStayIndoor) {
           // 실내 메뉴 랜덤 선택
@@ -236,18 +246,7 @@ class KakaoSlackBot {
       }
 
       // 날씨가 괜찮으면 기존 로직 실행 (구내식당 메뉴판 + 버튼)
-      // 현재 기온 가져오기
-      let currentTemperature = null;
-      let weatherDescription = null;
-      try {
-        const weather = await this.weatherService.getCurrentWeather();
-        if (!weather.error) {
-          currentTemperature = weather.temperature;
-          weatherDescription = weather.description;
-        }
-      } catch (weatherError) {
-        logger.warn('Failed to get weather for menu message:', weatherError.message);
-      }
+      // 날씨 정보는 위에서 이미 가져왔으므로 재사용
 
       // 1. 카카오톡 "오늘의 식단" 게시글에서 메뉴 정보 가져오기
       logger.info('Fetching today menu from KakaoTalk Plus Friend...');

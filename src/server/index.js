@@ -303,6 +303,44 @@ class SlackInteractionServer {
 
       logger.info(`Menu confirmed by user ${userId} (${userName}): ${previewMenu}`);
 
+      // 3초 후에 "이 메뉴는 절대 싫다" 버튼 표시
+      setTimeout(async () => {
+        try {
+          await axios.post(responseUrl, {
+            text: '이 메뉴가 마음에 안 드시나요?',
+            blocks: [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: '🤔 *혹시 이 메뉴가 마음에 안 드시나요?*'
+                }
+              },
+              {
+                type: 'actions',
+                block_id: 'reroll_actions',
+                elements: [
+                  {
+                    type: 'button',
+                    text: {
+                      type: 'plain_text',
+                      text: '🙅 이 메뉴는 절대 싫다!',
+                      emoji: true
+                    },
+                    style: 'danger',
+                    action_id: 'reroll_lunch_menu'
+                  }
+                ]
+              }
+            ],
+            replace_original: false,
+            response_type: 'in_channel'
+          });
+        } catch (error) {
+          logger.error('Error sending reroll button:', error);
+        }
+      }, 3000);
+
     } catch (error) {
       logger.error('Error handling confirm menu action:', error);
 
